@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 
 interface ProgressBarProps {
   currentTime: number;
@@ -6,7 +6,6 @@ interface ProgressBarProps {
   bufferedFraction?: number; // 0.0 to 1.0
   onSeekCommit: (timestamp: number) => void;
   className?: string;
-  isCompact?: boolean;
 }
 
 export function formatTime(seconds: number): string {
@@ -28,7 +27,6 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   bufferedFraction = 0,
   onSeekCommit,
   className = '',
-  isCompact = false,
 }) => {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragTime, setDragTime] = useState<number>(0);
@@ -88,10 +86,9 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     }
   };
 
-  // Keyboard accessibility
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (duration <= 0) return;
-    let step = 5; // 5 seconds
+    const step = 5;
     if (e.key === 'ArrowRight') {
       e.preventDefault();
       onSeekCommit(Math.min(duration, currentTime + step));
@@ -108,9 +105,9 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   };
 
   return (
-    <div className={`w-full flex items-center gap-2 select-none ${className}`}>
+    <div className={`w-full flex items-center gap-3 select-none ${className}`}>
       {/* Elapsed time */}
-      <span className="font-mono text-[10px] sm:text-[11px] text-[#b5a38b] tracking-wider shrink-0 min-w-[36px] sm:min-w-[42px] text-right">
+      <span className="font-mono text-xs text-zinc-400 font-medium tracking-tight shrink-0 min-w-[34px] text-right">
         {formatTime(displayTime)}
       </span>
 
@@ -129,27 +126,27 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
-        className="relative flex-1 py-3 cursor-pointer group flex items-center touch-none outline-none focus-visible:ring-1 focus-visible:ring-[#e8cca0]/50 rounded-full"
+        className="relative flex-1 py-2 cursor-pointer group flex items-center touch-none outline-none rounded-full"
       >
         {/* Background track */}
-        <div className="w-full h-[3px] group-hover:h-[4px] transition-all duration-150 rounded-full bg-white/15 relative overflow-hidden">
+        <div className="w-full h-1 group-hover:h-1.5 transition-all duration-150 rounded-full bg-white/15 relative overflow-hidden">
           {/* Buffered Progress Bar */}
           <div
-            className="absolute top-0 left-0 bottom-0 bg-white/20 transition-all duration-300 rounded-full"
+            className="absolute top-0 left-0 bottom-0 bg-white/25 transition-all duration-300 rounded-full"
             style={{ width: `${bufferedPercent}%` }}
           />
 
           {/* Played Progress Bar */}
           <div
-            className="absolute top-0 left-0 bottom-0 bg-[#e8cca0] group-hover:bg-[#f4ebdc] transition-all duration-75 rounded-full"
+            className="absolute top-0 left-0 bottom-0 bg-white transition-all duration-75 rounded-full"
             style={{ width: `${playedPercent}%` }}
           />
         </div>
 
         {/* Tactile Scrubber Thumb Handle */}
         <div
-          className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#f4ebdc] shadow-[0_0_8px_rgba(232,204,160,0.6)] border border-[#1a1315] pointer-events-none transition-transform duration-100 ${
-            isDragging ? 'scale-125 bg-[#ffffff]' : 'scale-0 group-hover:scale-100'
+          className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-white shadow-md pointer-events-none transition-transform duration-100 ${
+            isDragging ? 'scale-125' : 'scale-0 group-hover:scale-100'
           }`}
           style={{ left: `${playedPercent}%` }}
         />
@@ -157,7 +154,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
         {/* Hover Time Tooltip */}
         {hoverPosition && !isDragging && (
           <div
-            className="absolute -top-7 -translate-x-1/2 px-2 py-0.5 rounded bg-black/90 border border-[#d8be87]/30 text-[#f4ebdc] text-[10px] font-mono pointer-events-none shadow-lg z-30"
+            className="absolute -top-7 -translate-x-1/2 px-2 py-0.5 rounded bg-black/90 border border-white/20 text-white text-[10px] font-mono pointer-events-none shadow-lg z-30"
             style={{ left: `${hoverPosition.x}px` }}
           >
             {formatTime(hoverPosition.time)}
@@ -166,9 +163,10 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       </div>
 
       {/* Duration time */}
-      <span className="font-mono text-[10px] sm:text-[11px] text-[#8e7e69] tracking-wider shrink-0 min-w-[36px] sm:min-w-[42px] text-left">
+      <span className="font-mono text-xs text-zinc-400 font-medium tracking-tight shrink-0 min-w-[34px] text-left">
         {formatTime(duration)}
       </span>
     </div>
   );
 };
+

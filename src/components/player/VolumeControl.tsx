@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Volume2, Volume1, Volume, VolumeX } from 'lucide-react';
 
 interface VolumeControlProps {
@@ -7,7 +7,6 @@ interface VolumeControlProps {
   onVolumeChange: (newVolume: number) => void;
   onToggleMute: () => void;
   className?: string;
-  isExpandable?: boolean;
 }
 
 export const VolumeControl: React.FC<VolumeControlProps> = ({
@@ -16,23 +15,20 @@ export const VolumeControl: React.FC<VolumeControlProps> = ({
   onVolumeChange,
   onToggleMute,
   className = '',
-  isExpandable = true,
 }) => {
-  const [isHovered, setIsHovered] = useState<boolean>(false);
-
   const effectiveDisplayVolume = isMuted ? 0 : volume;
 
   const renderVolumeIcon = () => {
     if (isMuted || volume === 0) {
-      return <VolumeX className="w-4 h-4 text-[#d8be87]/60" />;
+      return <VolumeX className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />;
     }
     if (volume < 33) {
-      return <Volume className="w-4 h-4 text-[#d8be87]/90" />;
+      return <Volume className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />;
     }
     if (volume < 66) {
-      return <Volume1 className="w-4 h-4 text-[#d8be87]" />;
+      return <Volume1 className="w-4 h-4 text-zinc-300 hover:text-white transition-colors" />;
     }
-    return <Volume2 className="w-4 h-4 text-[#e8cca0]" />;
+    return <Volume2 className="w-4 h-4 text-zinc-300 hover:text-white transition-colors" />;
   };
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -41,47 +37,43 @@ export const VolumeControl: React.FC<VolumeControlProps> = ({
   };
 
   return (
-    <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={`flex items-center gap-2 relative group ${className}`}
-    >
+    <div className={`flex items-center gap-2 group ${className}`}>
       {/* Speaker Button */}
       <button
         onClick={onToggleMute}
         id="player-volume-mute-btn"
-        className="p-1.5 rounded-full text-[#d8be87]/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-[#e8cca0]"
+        className="p-1 rounded-full text-zinc-400 hover:text-white transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-white/50"
         aria-label={isMuted ? 'Unmute' : 'Mute'}
         title={isMuted ? 'Unmute (M)' : `Mute (M) - ${Math.round(volume)}%`}
       >
         {renderVolumeIcon()}
       </button>
 
-      {/* Volume Slider Track */}
-      <div
-        className={`flex items-center transition-all duration-200 ${
-          isExpandable
-            ? isHovered
-              ? 'w-20 opacity-100'
-              : 'w-16 opacity-75 sm:w-20 sm:opacity-90'
-            : 'w-24 opacity-100'
-        }`}
-      >
-        <div className="relative w-full flex items-center py-2">
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={effectiveDisplayVolume}
-            onChange={handleSliderChange}
-            aria-label="Volume level"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(effectiveDisplayVolume)}
-            className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-[#e8cca0] group-hover:h-1.5 transition-all outline-none"
+      {/* Volume Slider Capsule */}
+      <div className="relative w-16 sm:w-20 md:w-24 flex items-center">
+        {/* Custom Track */}
+        <div className="w-full h-1 bg-white/15 rounded-full overflow-hidden relative pointer-events-none">
+          <div
+            className="h-full bg-white transition-all duration-75 rounded-full"
+            style={{ width: `${effectiveDisplayVolume}%` }}
           />
         </div>
+
+        {/* Transparent Interactive Range Input */}
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={effectiveDisplayVolume}
+          onChange={handleSliderChange}
+          aria-label="Volume level"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(effectiveDisplayVolume)}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        />
       </div>
     </div>
   );
 };
+

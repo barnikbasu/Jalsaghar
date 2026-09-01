@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Track, PlaylistId, RepeatMode, PlaybackState } from '../types';
 import { YouTubePlayer } from './YouTubePlayer';
 import { GainController } from '../lib/audio/GainController';
@@ -15,12 +15,12 @@ import {
   Shuffle,
   Repeat,
   Repeat1,
-  ListMusic,
   BookOpen,
   Maximize2,
   Minimize2,
   Loader2,
-  Disc3,
+  Heart,
+  Music2,
 } from 'lucide-react';
 
 interface MusicPlayerProps {
@@ -60,6 +60,36 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const [showQueue, setShowQueue] = useState<boolean>(false);
   const [showRaagIndex, setShowRaagIndex] = useState<boolean>(false);
   const [isVideoExpanded, setIsVideoExpanded] = useState<boolean>(false);
+  const [imgError, setImgError] = useState<boolean>(false);
+
+  // Liked tracks local storage
+  const [likedTrackIds, setLikedTrackIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('jalsaghar_liked_tracks');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const isCurrentTrackLiked = likedTrackIds.includes(currentTrack.id);
+
+  const toggleLike = useCallback(() => {
+    setLikedTrackIds((prev) => {
+      let updated: string[];
+      if (prev.includes(currentTrack.id)) {
+        updated = prev.filter((id) => id !== currentTrack.id);
+        trackEvent('track_unliked', { title: currentTrack.title });
+      } else {
+        updated = [...prev, currentTrack.id];
+        trackEvent('track_liked', { title: currentTrack.title });
+      }
+      try {
+        localStorage.setItem('jalsaghar_liked_tracks', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  }, [currentTrack]);
 
   // Gain & Volume controller
   const gainControllerRef = useRef<GainController | null>(null);
@@ -82,6 +112,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     };
   }, []);
 
+  // Reset img error on track change
+  useEffect(() => {
+    setImgError(false);
+  }, [currentTrack.id]);
+
   // Update track normalization gain on track switch
   useEffect(() => {
     if (gainControllerRef.current) {
@@ -93,13 +128,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   const handlePlayPause = useCallback(async () => {
     const controller = gainControllerRef.current;
     if (isPlaying) {
-      // Pause: fade down then pause
       if (controller) {
         await controller.fadeOut(380);
       }
       onTogglePlay();
     } else {
-      // Play: resume and fade up
       onTogglePlay();
       if (controller) {
         controller.fadeIn(450);
@@ -126,7 +159,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     }
   }, []);
 
-  // Previous button logic: if currentTime > 3s, restart current track; else go to previous track
+  // Previous button logic: if currentTime > 3.5s, restart current track; else go to previous track
   const handlePreviousAction = useCallback(() => {
     if (currentTime > 3.5) {
       setSeekTarget(0);
@@ -157,7 +190,6 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     } else if (repeatMode === 'all') {
       handleNextAction();
     } else {
-      // Repeat off: if at end of playlist, pause; otherwise next
       const currentIndex = allTracks.findIndex((t) => t.id === currentTrack.id);
       if (currentIndex < allTracks.length - 1) {
         handleNextAction();
@@ -185,11 +217,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     setBufferedFraction(loadedFraction);
   }, [duration]);
 
-  // YouTube error handling (graceful fallback)
+  // YouTube error handling
   const handleError = useCallback((code: number) => {
     console.warn('YouTube Player error code:', code);
     setPlaybackState('error');
-    // Gracefully skip to next valid track after brief pause
     setTimeout(() => {
       onNext();
     }, 2400);
@@ -238,12 +269,17 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
       } else if (e.key === 'p' || e.key === 'P') {
         e.preventDefault();
         handlePreviousAction();
+      } else if (e.key === 'l' || e.key === 'L') {
+        e.preventDefault();
+        toggleLike();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePlayPause, currentTime, duration, userVolume, handleSeekCommit, handleVolumeChange, handleToggleMute, handleNextAction, handlePreviousAction]);
+  }, [handlePlayPause, currentTime, duration, userVolume, handleSeekCommit, handleVolumeChange, handleToggleMute, handleNextAction, handlePreviousAction, toggleLike]);
+
+  const trackArtworkUrl = `https://img.youtube.com/vi/${currentTrack.videoId}/hqdefault.jpg`;
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-40 p-3 sm:p-5 flex flex-col items-center pointer-events-none select-none safe-pb">
@@ -267,50 +303,160 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
         currentTrackId={currentTrack.id}
       />
 
-      {/* 3. DESKTOP PLAYER DOCK (THREE-ZONE ARCHITECTURE) */}
+      {/* 3. FLOATING PIP VIDEO CONTAINER (WHEN EXPANDED) */}
+      <div
+        className={`pointer-events-auto transition-all duration-300 ${
+          isVideoExpanded
+            ? 'fixed bottom-28 right-6 w-80 h-48 shadow-[0_20px_50px_rgba(0,0,0,0.95)] z-50 rounded-2xl overflow-hidden border border-white/20 bg-black'
+            : 'absolute w-0.5 h-0.5 opacity-0 overflow-hidden pointer-events-none'
+        }`}
+      >
+        <YouTubePlayer
+          videoId={currentTrack.videoId}
+          isPlaying={isPlaying}
+          volume={effectiveVolume}
+          isMuted={isMuted}
+          onPlayStateChange={(playing) => {
+            if (playing !== isPlaying) onTogglePlay();
+          }}
+          onBufferingChange={(buf) => setIsBuffering(buf)}
+          onEnded={handleTrackEnded}
+          onError={handleError}
+          onProgress={handleProgress}
+          seekToTimestamp={seekTarget}
+          onSeekHandled={() => setSeekTarget(null)}
+          className="w-full h-full"
+        />
+
+        {isVideoExpanded && (
+          <button
+            onClick={() => setIsVideoExpanded(false)}
+            className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/80 text-white/90 hover:text-white hover:bg-black transition-colors z-20 cursor-pointer shadow-md"
+            title="Minimize Video"
+            aria-label="Minimize Video"
+          >
+            <Minimize2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Non-expanded DOM Player instance to maintain seamless continuous playback */}
+      {!isVideoExpanded && (
+        <div className="absolute w-0.5 h-0.5 opacity-0 overflow-hidden pointer-events-none">
+          <YouTubePlayer
+            videoId={currentTrack.videoId}
+            isPlaying={isPlaying}
+            volume={effectiveVolume}
+            isMuted={isMuted}
+            onPlayStateChange={(playing) => {
+              if (playing !== isPlaying) onTogglePlay();
+            }}
+            onBufferingChange={(buf) => setIsBuffering(buf)}
+            onEnded={handleTrackEnded}
+            onError={handleError}
+            onProgress={handleProgress}
+            seekToTimestamp={seekTarget}
+            onSeekHandled={() => setSeekTarget(null)}
+            className="w-full h-full"
+          />
+        </div>
+      )}
+
+      {/* 4. MAIN MUSIC PLAYER BAR DOCK */}
       <div
         id="desktop-music-player"
-        className="hidden md:flex items-center justify-between w-full max-w-4xl px-5 py-3 rounded-full bg-[#120d0f]/80 backdrop-blur-2xl border border-white/10 shadow-[0_15px_45px_rgba(0,0,0,0.75)] pointer-events-auto text-[#f4ebdc] transition-all duration-200"
+        className="hidden md:grid grid-cols-[1.1fr_1.8fr_1.1fr] items-center w-full max-w-5xl px-6 py-3.5 rounded-2xl bg-[#0c0d10]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.85)] pointer-events-auto text-white transition-all gap-4"
       >
-        {/* ================= ZONE 1: ARCHIVAL METADATA ================= */}
-        <div className="flex items-center gap-3.5 min-w-[220px] max-w-[280px] shrink-0">
-          {/* Track Artwork / Vinyl Icon */}
-          <div className="relative w-11 h-11 rounded-xl overflow-hidden bg-black/60 border border-white/10 shadow-sm shrink-0 flex items-center justify-center group">
-            <Disc3 className={`w-6 h-6 text-[#d8be87] ${isPlaying ? 'animate-spin-slow' : 'opacity-75'}`} />
+        {/* ================= ZONE 1: TRACK ARTWORK & METADATA ================= */}
+        <div className="flex items-center gap-3.5 min-w-0">
+          {/* Track Artwork / Video Thumbnail */}
+          <div
+            onClick={() => setIsVideoExpanded(!isVideoExpanded)}
+            className="relative w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shadow-md shrink-0 group cursor-pointer"
+            title={isVideoExpanded ? 'Minimize video' : 'Click to watch performance'}
+          >
+            {!imgError ? (
+              <img
+                src={trackArtworkUrl}
+                alt={currentTrack.title}
+                onError={() => setImgError(true)}
+                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-400">
+                <Music2 className="w-5 h-5" />
+              </div>
+            )}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <Maximize2 className="w-4 h-4 text-white" />
+            </div>
           </div>
 
-          {/* Title & Archival Raag · Artist hierarchy */}
-          <div className="min-w-0 flex-1 truncate transition-opacity duration-200">
-            <h3 className="font-rozha text-sm tracking-wide text-[#f4ebdc] truncate font-medium">
+          {/* Title & Artist hierarchy */}
+          <div className="min-w-0 flex-1 truncate">
+            <h3 className="text-sm font-semibold text-white tracking-tight truncate">
               {currentTrack.title}
             </h3>
-            <p className="text-xs text-[#c9b596] truncate font-sans">
+            <p className="text-xs text-zinc-400 truncate mt-0.5">
               {currentTrack.raga ? `${currentTrack.raga} · ` : ''}
               {currentTrack.artist}
             </p>
           </div>
+
+          {/* Like / Heart Action */}
+          <button
+            onClick={toggleLike}
+            id="player-like-btn"
+            className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors cursor-pointer outline-none shrink-0"
+            title={isCurrentTrackLiked ? 'Unlike (L)' : 'Like (L)'}
+            aria-label={isCurrentTrackLiked ? 'Unlike track' : 'Like track'}
+          >
+            <Heart
+              className={`w-4 h-4 transition-transform duration-200 active:scale-125 ${
+                isCurrentTrackLiked
+                  ? 'text-rose-500 fill-rose-500 hover:text-rose-400 hover:fill-rose-400'
+                  : 'hover:text-white'
+              }`}
+            />
+          </button>
         </div>
 
-        {/* ================= ZONE 2: CORE PLAYBACK & PRECISE SEEKER ================= */}
-        <div className="flex flex-col items-center gap-1 flex-1 max-w-md px-4">
-          {/* Transport Buttons */}
-          <div className="flex items-center gap-4">
+        {/* ================= ZONE 2: CONTROLS & TIMELINE ================= */}
+        <div className="flex flex-col items-center gap-1.5 w-full max-w-md mx-auto">
+          {/* Media Playback Controls Row */}
+          <div className="flex items-center gap-5">
+            {/* Shuffle */}
+            <button
+              onClick={() => {
+                setIsShuffle(!isShuffle);
+                trackEvent('player_shuffle_toggled', { enabled: !isShuffle });
+              }}
+              id="desktop-shuffle-btn"
+              className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                isShuffle ? 'text-white' : 'text-zinc-400 hover:text-white'
+              }`}
+              title={isShuffle ? 'Shuffle: On' : 'Shuffle: Off'}
+              aria-label={isShuffle ? 'Shuffle On' : 'Shuffle Off'}
+            >
+              <Shuffle className="w-4 h-4" />
+            </button>
+
             {/* Previous */}
             <button
               onClick={handlePreviousAction}
               id="desktop-prev-btn"
-              className="p-2 rounded-full text-[#d8be87]/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-[#e8cca0]"
+              className="p-1.5 rounded-full text-zinc-300 hover:text-white transition-colors cursor-pointer outline-none"
               aria-label="Previous track (P)"
               title="Previous (P)"
             >
               <SkipBack className="w-4 h-4 fill-current" />
             </button>
 
-            {/* Play / Pause */}
+            {/* Play / Pause Pill */}
             <button
               onClick={handlePlayPause}
               id="desktop-play-pause-btn"
-              className="w-10 h-10 rounded-full bg-[#e8cca0] hover:bg-[#fff0d4] text-black flex items-center justify-center shadow-[0_2px_18px_rgba(232,204,160,0.45)] transition-all hover:scale-105 active:scale-95 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#f4ebdc]"
+              className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer outline-none"
               aria-label={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
               title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
             >
@@ -327,15 +473,32 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
             <button
               onClick={handleNextAction}
               id="desktop-next-btn"
-              className="p-2 rounded-full text-[#d8be87]/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-[#e8cca0]"
+              className="p-1.5 rounded-full text-zinc-300 hover:text-white transition-colors cursor-pointer outline-none"
               aria-label="Next track (N)"
               title="Next (N)"
             >
               <SkipForward className="w-4 h-4 fill-current" />
             </button>
+
+            {/* Repeat */}
+            <button
+              onClick={cycleRepeatMode}
+              id="desktop-repeat-btn"
+              className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                repeatMode !== 'off' ? 'text-white' : 'text-zinc-400 hover:text-white'
+              }`}
+              title={`Repeat: ${repeatMode.toUpperCase()}`}
+              aria-label={`Repeat ${repeatMode}`}
+            >
+              {repeatMode === 'one' ? (
+                <Repeat1 className="w-4 h-4 text-white" />
+              ) : (
+                <Repeat className="w-4 h-4" />
+              )}
+            </button>
           </div>
 
-          {/* Integrated Precise Seeker */}
+          {/* Integrated Seeker Bar */}
           <ProgressBar
             currentTime={currentTime}
             duration={duration}
@@ -344,46 +507,9 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
           />
         </div>
 
-        {/* ================= ZONE 3: UTILITY CONTROLS ================= */}
-        <div className="flex items-center gap-2.5 min-w-[210px] justify-end shrink-0">
-          {/* Shuffle Toggle */}
-          <button
-            onClick={() => {
-              setIsShuffle(!isShuffle);
-              trackEvent('player_shuffle_toggled', { enabled: !isShuffle });
-            }}
-            id="desktop-shuffle-btn"
-            className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-              isShuffle
-                ? 'bg-[#d8be87]/20 text-[#e8cca0]'
-                : 'text-[#d8be87]/60 hover:text-white hover:bg-white/10'
-            }`}
-            title={isShuffle ? 'Shuffle: On' : 'Shuffle: Off'}
-            aria-label={isShuffle ? 'Shuffle On' : 'Shuffle Off'}
-          >
-            <Shuffle className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Repeat Toggle */}
-          <button
-            onClick={cycleRepeatMode}
-            id="desktop-repeat-btn"
-            className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-              repeatMode !== 'off'
-                ? 'bg-[#d8be87]/20 text-[#e8cca0]'
-                : 'text-[#d8be87]/60 hover:text-white hover:bg-white/10'
-            }`}
-            title={`Repeat: ${repeatMode.toUpperCase()}`}
-            aria-label={`Repeat ${repeatMode}`}
-          >
-            {repeatMode === 'one' ? (
-              <Repeat1 className="w-3.5 h-3.5 text-[#e8cca0]" />
-            ) : (
-              <Repeat className="w-3.5 h-3.5" />
-            )}
-          </button>
-
-          {/* Volume Control */}
+        {/* ================= ZONE 3: UTILITY & RAAG INDEX ================= */}
+        <div className="flex items-center gap-4 justify-end shrink-0">
+          {/* Volume Control Slider */}
           <VolumeControl
             volume={userVolume}
             isMuted={isMuted}
@@ -391,132 +517,78 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
             onToggleMute={handleToggleMute}
           />
 
-          {/* Raag Index Trigger */}
+          {/* INDEX Button */}
           <button
             onClick={() => setShowRaagIndex(true)}
             id="desktop-raag-index-btn"
-            className="p-1.5 rounded-full text-[#d8be87]/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-            title="Open Raag Index"
-            aria-label="Open Raag Index"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/25 text-white/90 hover:text-white text-xs font-semibold tracking-wider uppercase transition-all cursor-pointer shadow-sm active:scale-95"
+            title="Open Raag & Repertoire Index"
+            aria-label="Open Raag & Repertoire Index"
           >
-            <BookOpen className="w-4 h-4" />
+            <BookOpen className="w-3.5 h-3.5 text-zinc-300" />
+            <span>INDEX</span>
           </button>
-
-          {/* Repertoire / Up Next Trigger */}
-          <button
-            onClick={() => setShowQueue(!showQueue)}
-            id="desktop-queue-btn"
-            className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-              showQueue
-                ? 'bg-[#d8be87]/20 text-[#e8cca0]'
-                : 'text-[#d8be87]/70 hover:text-white hover:bg-white/10'
-            }`}
-            title="Mehfil Repertoire"
-            aria-label="Toggle Mehfil Repertoire"
-          >
-            <ListMusic className="w-4 h-4" />
-          </button>
-
-          {/* Visible YouTube Video 16:9 Slot (Mandatory requirement) */}
-          <div
-            className={`transition-all duration-300 relative ${
-              isVideoExpanded
-                ? 'fixed bottom-24 right-6 w-80 shadow-[0_15px_50px_rgba(0,0,0,0.95)] z-50 rounded-2xl overflow-hidden border border-[#d8be87]/40'
-                : 'w-20 h-12 rounded-lg overflow-hidden border border-white/15 shadow-sm'
-            }`}
-          >
-            <YouTubePlayer
-              videoId={currentTrack.videoId}
-              isPlaying={isPlaying}
-              volume={effectiveVolume}
-              isMuted={isMuted}
-              onPlayStateChange={(playing) => {
-                if (playing !== isPlaying) onTogglePlay();
-              }}
-              onBufferingChange={(buf) => setIsBuffering(buf)}
-              onEnded={handleTrackEnded}
-              onError={handleError}
-              onProgress={handleProgress}
-              seekToTimestamp={seekTarget}
-              onSeekHandled={() => setSeekTarget(null)}
-              className="w-full h-full"
-            />
-
-            {/* Expand / Minimize Pip overlay button */}
-            <button
-              onClick={() => setIsVideoExpanded(!isVideoExpanded)}
-              className="absolute top-1 right-1 p-1 rounded-md bg-black/70 text-white/80 hover:text-white hover:bg-black transition-colors z-20"
-              title={isVideoExpanded ? 'Minimize Video' : 'Expand Video'}
-              aria-label={isVideoExpanded ? 'Minimize Video' : 'Expand Video'}
-            >
-              {isVideoExpanded ? (
-                <Minimize2 className="w-3 h-3" />
-              ) : (
-                <Maximize2 className="w-3 h-3" />
-              )}
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* 4. MOBILE TACTILE PLAYBACK SHEET (DEDICATED LISTENING ERGONOMICS) */}
+      {/* 5. MOBILE PLAYER DOCK */}
       <div
         id="mobile-music-player"
-        className="flex md:hidden flex-col w-full max-w-sm bg-[#120d0f]/90 backdrop-blur-2xl border border-white/12 rounded-3xl p-4 sm:p-5 shadow-[0_15px_50px_rgba(0,0,0,0.9)] pointer-events-auto text-[#f4ebdc]"
+        className="flex md:hidden flex-col w-full max-w-sm bg-[#0c0d10]/95 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-auto text-white"
       >
-        {/* Top: 16:9 Video & Metadata */}
-        <div className="flex items-center gap-3.5 mb-3">
-          {/* Visible YouTube 16:9 Player container */}
-          <div className="w-24 h-14 rounded-xl overflow-hidden border border-white/15 shrink-0 relative bg-black shadow-inner">
-            <YouTubePlayer
-              videoId={currentTrack.videoId}
-              isPlaying={isPlaying}
-              volume={effectiveVolume}
-              isMuted={isMuted}
-              onPlayStateChange={(playing) => {
-                if (playing !== isPlaying) onTogglePlay();
-              }}
-              onBufferingChange={(buf) => setIsBuffering(buf)}
-              onEnded={handleTrackEnded}
-              onError={handleError}
-              onProgress={handleProgress}
-              seekToTimestamp={seekTarget}
-              onSeekHandled={() => setSeekTarget(null)}
-              className="w-full h-full"
-            />
+        {/* Top: Artwork, Titles, Heart & Index */}
+        <div className="flex items-center gap-3 mb-3">
+          <div
+            onClick={() => setIsVideoExpanded(!isVideoExpanded)}
+            className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shrink-0 relative cursor-pointer"
+          >
+            {!imgError ? (
+              <img
+                src={trackArtworkUrl}
+                alt={currentTrack.title}
+                onError={() => setImgError(true)}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-400">
+                <Music2 className="w-5 h-5" />
+              </div>
+            )}
           </div>
 
-          {/* Track Titles */}
           <div className="flex-1 min-w-0 pr-1">
-            <h3 className="font-rozha text-sm sm:text-base text-[#f4ebdc] truncate leading-tight">
+            <h3 className="text-sm font-semibold text-white truncate leading-tight">
               {currentTrack.title}
             </h3>
-            <p className="text-xs text-[#c9b596] truncate font-sans mt-0.5">
+            <p className="text-xs text-zinc-400 truncate mt-0.5">
               {currentTrack.raga ? `${currentTrack.raga} · ` : ''}
               {currentTrack.artist}
             </p>
           </div>
 
-          {/* Utility Quick Buttons */}
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setShowRaagIndex(true)}
-              className="p-2 rounded-full text-[#d8be87]/80 hover:text-white transition-colors"
-              aria-label="Raag Index"
+              onClick={toggleLike}
+              className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors"
+              aria-label="Like"
             >
-              <BookOpen className="w-4 h-4" />
+              <Heart
+                className={`w-4 h-4 ${
+                  isCurrentTrackLiked ? 'text-rose-500 fill-rose-500' : ''
+                }`}
+              />
             </button>
             <button
-              onClick={() => setShowQueue(!showQueue)}
-              className="p-2 rounded-full text-[#d8be87]/80 hover:text-white transition-colors"
-              aria-label="Repertoire"
+              onClick={() => setShowRaagIndex(true)}
+              className="px-2.5 py-1 rounded-md bg-white/5 border border-white/15 text-[11px] font-medium uppercase tracking-wider text-white"
+              aria-label="Index"
             >
-              <ListMusic className="w-4 h-4" />
+              INDEX
             </button>
           </div>
         </div>
 
-        {/* Large Tactile Seeker */}
+        {/* Mobile Seeker */}
         <div className="mb-2">
           <ProgressBar
             currentTime={currentTime}
@@ -526,65 +598,57 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
           />
         </div>
 
-        {/* Primary Controls Row */}
-        <div className="flex items-center justify-between px-1">
-          {/* Shuffle */}
+        {/* Mobile Controls */}
+        <div className="flex items-center justify-between px-2">
           <button
             onClick={() => setIsShuffle(!isShuffle)}
-            className={`p-2.5 rounded-full transition-colors ${
-              isShuffle ? 'text-[#e8cca0]' : 'text-white/40 hover:text-white'
+            className={`p-2 rounded-full transition-colors ${
+              isShuffle ? 'text-white' : 'text-zinc-400'
             }`}
-            aria-label={isShuffle ? 'Shuffle On' : 'Shuffle Off'}
+            aria-label="Shuffle"
           >
             <Shuffle className="w-4 h-4" />
           </button>
 
-          {/* Previous */}
           <button
             onClick={handlePreviousAction}
-            id="mobile-prev-btn"
-            className="p-2.5 rounded-full text-white/80 hover:text-white active:scale-95 transition-transform"
-            aria-label="Previous Track"
+            className="p-2 rounded-full text-zinc-300 hover:text-white"
+            aria-label="Previous"
           >
             <SkipBack className="w-5 h-5 fill-current" />
           </button>
 
-          {/* Central Dominant Play/Pause */}
           <button
             onClick={handlePlayPause}
-            id="mobile-play-pause-btn"
-            className="w-12 h-12 rounded-full bg-[#e8cca0] text-black flex items-center justify-center shadow-[0_2px_16px_rgba(232,204,160,0.5)] active:scale-95 transition-transform"
+            className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-md active:scale-95"
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isBuffering ? (
-              <Loader2 className="w-5 h-5 animate-spin text-black" />
+              <Loader2 className="w-4.5 h-4.5 animate-spin text-black" />
             ) : isPlaying ? (
-              <Pause className="w-5 h-5 fill-black text-black" />
+              <Pause className="w-4.5 h-4.5 fill-black text-black" />
             ) : (
-              <Play className="w-5 h-5 fill-black text-black ml-0.5" />
+              <Play className="w-4.5 h-4.5 fill-black text-black ml-0.5" />
             )}
           </button>
 
-          {/* Next */}
           <button
             onClick={handleNextAction}
-            id="mobile-next-btn"
-            className="p-2.5 rounded-full text-white/80 hover:text-white active:scale-95 transition-transform"
-            aria-label="Next Track"
+            className="p-2 rounded-full text-zinc-300 hover:text-white"
+            aria-label="Next"
           >
             <SkipForward className="w-5 h-5 fill-current" />
           </button>
 
-          {/* Repeat */}
           <button
             onClick={cycleRepeatMode}
-            className={`p-2.5 rounded-full transition-colors ${
-              repeatMode !== 'off' ? 'text-[#e8cca0]' : 'text-white/40 hover:text-white'
+            className={`p-2 rounded-full transition-colors ${
+              repeatMode !== 'off' ? 'text-white' : 'text-zinc-400'
             }`}
-            aria-label={`Repeat ${repeatMode}`}
+            aria-label="Repeat"
           >
             {repeatMode === 'one' ? (
-              <Repeat1 className="w-4 h-4 text-[#e8cca0]" />
+              <Repeat1 className="w-4 h-4 text-white" />
             ) : (
               <Repeat className="w-4 h-4" />
             )}
@@ -594,3 +658,4 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     </div>
   );
 };
+
