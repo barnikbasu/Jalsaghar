@@ -46,14 +46,11 @@ export const ArtworkView: React.FC<ArtworkViewProps> = ({ timeOfDay }) => {
             <img
               src={currentSrc}
               alt={`Jalsaghar Mehfil - ${info.name}`}
-              className={`w-full h-full object-cover object-center transition-transform duration-1000 ease-out ${
-                isActive ? 'scale-100' : 'scale-[1.01]'
-              }`}
+              className="w-full h-full object-cover object-center"
               onLoad={() =>
                 setImageLoaded((prev) => ({ ...prev, [period]: true }))
               }
               onError={() => {
-                // If the binary image isn't on disk yet in dev, keep ambient watercolor tone active
                 setImageLoaded((prev) => ({ ...prev, [period]: false }));
               }}
             />
