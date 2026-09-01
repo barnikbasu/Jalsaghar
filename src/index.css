@@ -21,6 +21,10 @@
   font-family: 'Mina', serif, system-ui;
 }
 
+.font-poppins {
+  font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+}
+
 .font-rozha {
   font-family: 'Rozha One', Georgia, serif;
 }

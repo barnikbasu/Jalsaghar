@@ -100,7 +100,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             }}
             id="group-creators-btn"
             className="p-1.5 sm:p-2 rounded-full hover:bg-white/15 text-white/90 hover:text-white transition-all cursor-pointer group"
-            aria-label="About the Jalsaghar project and creators"
+            aria-label="About the creators"
             title="Made with Bhalobasha"
           >
             {/* Minimal Vector Icon: Two Stylized Human Silhouettes Side-by-Side Chest-Up */}
