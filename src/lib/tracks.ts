@@ -1,4 +1,4 @@
-import { PlaylistId, Track } from '../types';
+import { PlaylistId, Track, RaagInfo } from '../types';
 
 export const EXTERNAL_LINKS = {
   youtubeMusic: 'https://music.youtube.com/playlist?list=PLJAiFJ6bGyew',
@@ -17,6 +17,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: '9eB3p1Z0vQ0',
     playlistId: 'baithak',
     notes: 'Sublime voice culture breathing pure evening tranquility into Yaman.',
+    normalizationGain: 1.0,
   },
   {
     id: 'b2',
@@ -28,6 +29,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: 'qC8e1f0L_bE',
     playlistId: 'baithak',
     notes: 'Legendary shehnai recital imbued with soulful Banarasi thumri nuances.',
+    normalizationGain: 0.98,
   },
   {
     id: 'b3',
@@ -39,6 +41,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: 'mD2a4gH-a88',
     playlistId: 'baithak',
     notes: 'Deeply spiritual sitar alaap and gat celebrating nocturnal silence.',
+    normalizationGain: 1.0,
   },
   {
     id: 'b4',
@@ -50,6 +53,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: 'h8Lw-s0M8tA',
     playlistId: 'baithak',
     notes: 'Majestic afternoon khayal resonating with devotional fervor.',
+    normalizationGain: 0.95,
   },
   {
     id: 'b5',
@@ -61,6 +65,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: 'Oa_0x9wG-qY',
     playlistId: 'baithak',
     notes: 'Hauntingly emotive sarod melodies woven across vintage rugs.',
+    normalizationGain: 1.0,
   },
   {
     id: 'b6',
@@ -72,6 +77,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: 'u_1BwP4a2_o',
     playlistId: 'baithak',
     notes: 'Soothing bamboo flute evoking the gentle yearning of midnight.',
+    normalizationGain: 0.98,
   },
 
   // ==================== RIYAZ (Contemplative Morning & Long-Form Alaap) ====================
@@ -85,6 +91,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: '4pE3v0G7b8Q',
     playlistId: 'riyaz',
     notes: 'Crystal clear acoustic raindrops awakening the morning dawn.',
+    normalizationGain: 1.0,
   },
   {
     id: 'r2',
@@ -96,6 +103,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: 'kE6d9yV_a7A',
     playlistId: 'riyaz',
     notes: 'Austerity and profound introspection in the classical morning canon.',
+    normalizationGain: 0.96,
   },
   {
     id: 'r3',
@@ -107,6 +115,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: '0gQ_u5Vq9o8',
     playlistId: 'riyaz',
     notes: 'Ancient microtonal andolans on the majestic Rudra Veena.',
+    normalizationGain: 1.0,
   },
   {
     id: 'r4',
@@ -118,6 +127,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: '2pW8m9_bXp0',
     playlistId: 'riyaz',
     notes: 'Luminous vocal expression exploring emotional bhakti.',
+    normalizationGain: 0.97,
   },
 
   // ==================== MEHFIL (Nocturnal Gatherings & Thumri) ====================
@@ -131,6 +141,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: 'f9N2q4bZ_8w',
     playlistId: 'mehfil',
     notes: 'Sensuous and tender Poorab Ang thumri by the Appaji of Banaras.',
+    normalizationGain: 0.95,
   },
   {
     id: 'm2',
@@ -142,6 +153,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: 'e9K3pW1yZ8E',
     playlistId: 'mehfil',
     notes: 'The immortal Mallika-e-Ghazal capturing the fragrance of courtly baithaks.',
+    normalizationGain: 0.95,
   },
   {
     id: 'm3',
@@ -153,6 +165,7 @@ export const TRACK_CATALOG: Track[] = [
     videoId: '1qP3a4oX_Y0',
     playlistId: 'mehfil',
     notes: 'Unrivaled vocal ornamentations and nostalgic longing.',
+    normalizationGain: 0.96,
   },
   {
     id: 'm4',
@@ -164,9 +177,91 @@ export const TRACK_CATALOG: Track[] = [
     videoId: 'k8N3v0m9L_A',
     playlistId: 'mehfil',
     notes: 'Silken romanticism in the heart of midnight.',
+    normalizationGain: 0.98,
+  },
+];
+
+export const RAAG_CATALOG: RaagInfo[] = [
+  {
+    name: 'Raag Yaman',
+    timeOfDay: 'First prahar of the night (Pratham Prahar)',
+    thaat: 'Kalyan',
+    mood: 'Devotional, peaceful, serene, romantic (Shringara & Shanta)',
+    tracks: ['b1'],
+  },
+  {
+    name: 'Raga Bhairavi',
+    timeOfDay: 'Early morning / Universal concluding raga',
+    thaat: 'Bhairavi',
+    mood: 'Compassion, yearning, pathos, poignant farewell (Karuna)',
+    tracks: ['b2', 'm1'],
+  },
+  {
+    name: 'Raga Malkauns',
+    timeOfDay: 'Deep midnight (Tritiya Prahar)',
+    thaat: 'Bhairavi',
+    mood: 'Profound solemnity, meditative calm, spiritual gravity',
+    tracks: ['b3'],
+  },
+  {
+    name: 'Raga Bhimpalasi',
+    timeOfDay: 'Late afternoon (Triteeya Prahar)',
+    thaat: 'Kafi',
+    mood: 'Passionate longing, tender devotion, melancholic beauty',
+    tracks: ['b4'],
+  },
+  {
+    name: 'Raga Pilu',
+    timeOfDay: 'Late afternoon to evening',
+    thaat: 'Kafi',
+    mood: 'Light classical, romantic charm, wistful thumri mood',
+    tracks: ['b5'],
+  },
+  {
+    name: 'Raga Bageshri',
+    timeOfDay: 'Midnight (Madhyaratri)',
+    thaat: 'Kafi',
+    mood: 'Romantic anticipation, sweet sorrow of separation (Viraha)',
+    tracks: ['b6'],
+  },
+  {
+    name: 'Raga Ahir Bhairav',
+    timeOfDay: 'Daybreak / Early morning (Pratham Prahar)',
+    thaat: 'Bhairav',
+    mood: 'Quiet contemplation, renewal, spiritual dawn (Bhakti)',
+    tracks: ['r1'],
+  },
+  {
+    name: 'Raga Todi',
+    timeOfDay: 'Late morning (Dvitiya Prahar)',
+    thaat: 'Todi',
+    mood: 'Profound pathos, austere asceticism, intense yearning',
+    tracks: ['r2'],
+  },
+  {
+    name: 'Raga Darbari Kanada',
+    timeOfDay: 'Midnight (Nisheeth)',
+    thaat: 'Asavari',
+    mood: 'Royal grandeur, nocturnal gravity, profound philosophical depth',
+    tracks: ['r3'],
+  },
+  {
+    name: 'Raga Bhoopali',
+    timeOfDay: 'First prahar of the night (Evening twilight)',
+    thaat: 'Kalyan',
+    mood: 'Joyful calm, innocence, serene majesty (Shanta & Veera)',
+    tracks: ['r4'],
+  },
+  {
+    name: 'Raga Bihag',
+    timeOfDay: 'Second prahar of the night (10 PM – Midnight)',
+    thaat: 'Bilawal',
+    mood: 'Sensuous, gentle celebration, aristocratic midnight joy',
+    tracks: ['m4'],
   },
 ];
 
 export function getTracksByPlaylist(playlistId: PlaylistId): Track[] {
   return TRACK_CATALOG.filter((t) => t.playlistId === playlistId);
 }
+

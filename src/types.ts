@@ -2,6 +2,24 @@ export type TimeOfDay = 'shokal' | 'dupur' | 'bikel' | 'raat';
 
 export type PlaylistId = 'baithak' | 'riyaz' | 'mehfil';
 
+export type RepeatMode = 'off' | 'all' | 'one';
+
+export type PlaybackState =
+  | 'idle'
+  | 'loading'
+  | 'playing'
+  | 'paused'
+  | 'buffering'
+  | 'ended'
+  | 'error';
+
+export type AudioTransitionState =
+  | 'idle'
+  | 'fading-in'
+  | 'playing'
+  | 'fading-out'
+  | 'transitioning';
+
 export interface Track {
   id: string;
   title: string;
@@ -14,6 +32,15 @@ export interface Track {
   videoId: string;
   playlistId: PlaylistId;
   notes?: string;
+  normalizationGain?: number;
+}
+
+export interface RaagInfo {
+  name: string;
+  timeOfDay: string;
+  thaat: string;
+  mood: string;
+  tracks: string[]; // Track IDs
 }
 
 export interface TimePeriodConfig {
