@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-mina: 'Mina', serif, system-ui;
+    --font-rozha: 'Rozha One', Georgia, serif;
+  }
+
+  body {
+    font-family: var(--font-rozha);
+    background-color: #0c0809;
+    color: #f7f3e9;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom Typography Utility Classes */
+.font-bengali {
+  font-family: 'Mina', serif, system-ui;
+}
+
+.font-rozha {
+  font-family: 'Rozha One', Georgia, serif;
+}
+
+/* Vinyl rotation animation */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 18s linear infinite;
+}
+
+.paused {
+  animation-play-state: paused !important;
+}
+
+/* Ambient Subtle Grain Overlay */
+.film-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* Atmospheric Seam Light Leak */
+.light-slit-glow {
+  box-shadow: 0 0 35px 8px rgba(235, 178, 92, 0.45),
+              0 0 80px 24px rgba(220, 130, 45, 0.25);
+}
+
+/* Curtain Heavy Fabric Fold Gradient */
+.curtain-left-folds {
+  background: linear-gradient(
+    90deg,
+    #14070a 0%,
+    #250c12 12%,
+    #130609 25%,
+    #2a0d14 38%,
+    #18080b 52%,
+    #321019 65%,
+    #17070b 78%,
+    #220b11 90%,
+    #120609 100%
+  );
+}
+
+.curtain-right-folds {
+  background: linear-gradient(
+    90deg,
+    #120609 0%,
+    #220b11 10%,
+    #17070b 22%,
+    #321019 35%,
+    #18080b 48%,
+    #2a0d14 62%,
+    #130609 75%,
+    #250c12 88%,
+    #14070a 100%
+  );
+}
+
+/* Safe Area Insets for Mobile */
+.safe-pt {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+.safe-pb {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+.safe-pl {
+  padding-left: max(1rem, env(safe-area-inset-left));
+}
+.safe-pr {
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
