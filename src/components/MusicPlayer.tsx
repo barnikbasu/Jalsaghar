@@ -1,320 +1,387 @@
 import React, { useState } from 'react';
-import { PlaylistId, Track } from '../types';
-import { PLAYLISTS } from '../lib/tracks';
+import { Track, PlaylistId } from '../types';
 import { YouTubePlayer } from './YouTubePlayer';
+import { trackEvent } from '../lib/analytics';
 import {
   Play,
   Pause,
   SkipBack,
   SkipForward,
+  Shuffle,
+  Repeat,
+  Heart,
   Volume2,
   VolumeX,
-  Disc3,
-  Video,
-  ChevronUp,
-  ChevronDown,
+  Maximize2,
+  Minimize2,
+  ListMusic,
 } from 'lucide-react';
 
 interface MusicPlayerProps {
   currentTrack: Track;
-  currentPlaylist: PlaylistId;
   isPlaying: boolean;
-  isBuffering: boolean;
-  currentTime: number;
-  duration: number;
-  volume: number;
-  isMuted: boolean;
-  noticeMessage: string | null;
-  onPlayPause: () => void;
-  onPrevious: () => void;
+  onTogglePlay: () => void;
   onNext: () => void;
-  onSeek: (seconds: number) => void;
-  onVolumeChange: (volume: number) => void;
-  onToggleMute: () => void;
-  onSelectPlaylist: (playlist: PlaylistId) => void;
-  onPlayerReady: () => void;
-  onStateChange: (state: number) => void;
-  onTimeUpdate: (currentTime: number, duration: number) => void;
-  onError: (code: number) => void;
+  onPrevious: () => void;
+  onTrackSelect: (track: Track) => void;
+  allTracks: Track[];
+  currentPlaylist: PlaylistId;
+  onPlaylistChange: (playlist: PlaylistId) => void;
+}
+
+function formatTime(seconds: number): string {
+  if (isNaN(seconds) || seconds < 0) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
 export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   currentTrack,
-  currentPlaylist,
   isPlaying,
-  isBuffering,
-  currentTime,
-  duration,
-  volume,
-  isMuted,
-  noticeMessage,
-  onPlayPause,
-  onPrevious,
+  onTogglePlay,
   onNext,
-  onSeek,
-  onVolumeChange,
-  onToggleMute,
-  onSelectPlaylist,
-  onPlayerReady,
-  onStateChange,
-  onTimeUpdate,
-  onError,
+  onPrevious,
+  onTrackSelect,
+  allTracks,
+  currentPlaylist,
+  onPlaylistChange,
 }) => {
-  const [seekTime, setSeekTime] = useState<number | null>(null);
-  const [isSeeking, setIsSeeking] = useState<boolean>(false);
-  const [showVideoEmbed, setShowVideoEmbed] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+  const [seekTarget, setSeekTarget] = useState<number | null>(null);
+  const [isFavorite, setIsFavorite] = useState<boolean>(false);
+  const [isShuffle, setIsShuffle] = useState<boolean>(false);
+  const [isRepeat, setIsRepeat] = useState<boolean>(false);
+  const [showQueue, setShowQueue] = useState<boolean>(false);
+  const [isVideoExpanded, setIsVideoExpanded] = useState<boolean>(false);
 
-  const formatSeconds = (sec: number) => {
-    if (isNaN(sec) || sec <= 0) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
-
-  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    setIsSeeking(true);
-    setSeekTime(val);
-  };
-
-  const handleSeekCommit = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
-    if (seekTime !== null) {
-      onSeek(seekTime);
+  const handleProgress = (curr: number, total: number) => {
+    setCurrentTime(curr);
+    if (total > 0 && duration !== total) {
+      setDuration(total);
     }
-    setIsSeeking(false);
   };
 
-  const progressPercent = duration > 0 ? ((currentTime / duration) * 100).toFixed(2) : '0';
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    setCurrentTime(newTime);
+    setSeekTarget(newTime);
+  };
 
-  const playlists: PlaylistId[] = ['baithak', 'riyaz', 'mehfil'];
+  const handleEnded = () => {
+    if (isRepeat) {
+      setSeekTarget(0);
+    } else {
+      onNext();
+    }
+  };
+
+  const handleError = (code: number) => {
+    console.warn('YouTube Player error code:', code);
+    // Gracefully skip to next track after 2 seconds
+    setTimeout(() => {
+      onNext();
+    }, 2500);
+  };
+
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-40 px-3 sm:px-8 pb-3 sm:pb-6 safe-pb safe-pl safe-pr pointer-events-auto">
-      {/* Notice Message Toast if track skipped */}
-      {noticeMessage && (
-        <div className="mb-2 max-w-md mx-auto px-4 py-1.5 rounded-full bg-black/80 backdrop-blur-md border border-[#d8be87]/30 text-center text-xs font-rozha tracking-wider text-[#e6cca0] animate-in fade-in slide-in-from-bottom-2 duration-300">
-          {noticeMessage}
+    <div className="fixed bottom-0 inset-x-0 z-40 p-3 sm:p-6 flex flex-col items-center pointer-events-none select-none safe-pb">
+      {/* EXPANDABLE PLAYLIST DRAWER / QUEUE */}
+      {showQueue && (
+        <div className="w-full max-w-2xl mb-3 bg-[#120d0f]/95 backdrop-blur-xl border border-[#d8be87]/20 rounded-2xl p-4 shadow-[0_10px_35px_rgba(0,0,0,0.85)] pointer-events-auto max-h-60 overflow-y-auto">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#d8be87]/15">
+            <div className="flex items-center gap-2">
+              <ListMusic className="w-4 h-4 text-[#d8be87]" />
+              <span className="font-rozha text-xs uppercase tracking-widest text-[#e8cca0]">
+                MEHFIL REPERTOIRE
+              </span>
+            </div>
+            {/* Playlist Collections */}
+            <div className="flex items-center gap-1">
+              {(['baithak', 'riyaz', 'mehfil'] as PlaylistId[]).map((pid) => (
+                <button
+                  key={pid}
+                  onClick={() => onPlaylistChange(pid)}
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-rozha uppercase tracking-wider transition-all cursor-pointer ${
+                    currentPlaylist === pid
+                      ? 'bg-[#d8be87] text-black font-semibold'
+                      : 'text-[#d8be87]/70 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {pid}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            {allTracks.map((track) => (
+              <button
+                key={track.id}
+                onClick={() => {
+                  onTrackSelect(track);
+                  trackEvent('track_selected', { title: track.title, artist: track.artist });
+                }}
+                className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                  currentTrack.id === track.id
+                    ? 'bg-white/10 text-[#e8cca0]'
+                    : 'text-[#e5d8c3]/80 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <div className="truncate pr-2">
+                  <p className="font-rozha truncate font-medium">{track.title}</p>
+                  <p className="text-[10px] text-[#b09e86] truncate">{track.artist}</p>
+                </div>
+                <span className="text-[10px] text-[#8e7e69] font-mono">{track.duration}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Main Glass Floating Card */}
-      <div className="max-w-4xl mx-auto rounded-2xl sm:rounded-3xl bg-[#140e10]/80 backdrop-blur-2xl border border-white/12 shadow-[0_16px_48px_-12px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.15)] text-[#f7f3e9] overflow-hidden transition-all duration-300">
-        {/* Visible YouTube Video Expandable Slot */}
-        <div
-          className={`transition-all duration-500 overflow-hidden bg-black/95 ${
-            showVideoEmbed ? 'max-h-72 sm:max-h-80 border-b border-white/10 p-3' : 'max-h-0 p-0'
-          }`}
-        >
-          <div className="max-w-md mx-auto aspect-video rounded-xl overflow-hidden shadow-2xl border border-white/10">
-            <YouTubePlayer
-              currentTrack={currentTrack}
-              isPlaying={isPlaying}
-              isMuted={isMuted}
-              volume={volume}
-              seekTime={seekTime}
-              onPlayerReady={onPlayerReady}
-              onStateChange={onStateChange}
-              onTimeUpdate={onTimeUpdate}
-              onError={onError}
-            />
+      {/* DESKTOP PLAYER (HORIZONTAL SLEEK DOCK) */}
+      <div className="hidden md:flex items-center justify-between w-full max-w-3xl px-5 py-3 rounded-full bg-black/45 backdrop-blur-xl border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.7)] pointer-events-auto text-[#f5ede0]">
+        {/* LEFT: Track Info */}
+        <div className="flex items-center gap-3 min-w-[200px] max-w-[260px]">
+          <div className="truncate">
+            <h3 className="font-rozha text-sm tracking-wide text-[#f4ebdc] truncate">
+              {currentTrack.title}
+            </h3>
+            <p className="font-rozha text-xs text-[#c9b596] truncate">
+              {currentTrack.artist}
+            </p>
           </div>
         </div>
 
-        {/* Hidden permanent player instance when video collapse is closed */}
-        {!showVideoEmbed && (
-          <div className="w-[180px] h-[100px] absolute -bottom-9999 left-0 pointer-events-none opacity-1 overflow-hidden">
-            <YouTubePlayer
-              currentTrack={currentTrack}
-              isPlaying={isPlaying}
-              isMuted={isMuted}
-              volume={volume}
-              seekTime={seekTime}
-              onPlayerReady={onPlayerReady}
-              onStateChange={onStateChange}
-              onTimeUpdate={onTimeUpdate}
-              onError={onError}
-            />
-          </div>
-        )}
+        {/* CENTER: Transport Controls & Seek */}
+        <div className="flex flex-col items-center gap-1.5 flex-1 max-w-sm px-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onPrevious}
+              id="desktop-prev-btn"
+              className="p-1.5 rounded-full text-[#d8be87]/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              aria-label="Previous Track"
+            >
+              <SkipBack className="w-4 h-4 fill-current" />
+            </button>
 
-        {/* Player Upper: Playlist Tabs */}
-        <div className="flex items-center justify-between px-4 sm:px-6 pt-3 pb-1 border-b border-white/5">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {playlists.map((pid) => {
-              const p = PLAYLISTS[pid];
-              const isActive = currentPlaylist === pid;
-              return (
-                <button
-                  key={pid}
-                  onClick={() => onSelectPlaylist(pid)}
-                  className={`px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-rozha tracking-[0.2em] uppercase transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-[#d8be87]/25 text-[#e6cca0] border border-[#d8be87]/40 shadow-sm'
-                      : 'text-[#e3dac7]/60 hover:text-[#f7f3e9] hover:bg-white/5'
-                  }`}
-                >
-                  {p.name}
-                </button>
-              );
-            })}
+            <button
+              onClick={onTogglePlay}
+              id="desktop-play-pause-btn"
+              className="w-10 h-10 rounded-full bg-[#e8cca0] hover:bg-[#fff0d4] text-black flex items-center justify-center shadow-[0_2px_15px_rgba(232,204,160,0.4)] transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? (
+                <Pause className="w-4.5 h-4.5 fill-black text-black" />
+              ) : (
+                <Play className="w-4.5 h-4.5 fill-black text-black ml-0.5" />
+              )}
+            </button>
+
+            <button
+              onClick={onNext}
+              id="desktop-next-btn"
+              className="p-1.5 rounded-full text-[#d8be87]/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              aria-label="Next Track"
+            >
+              <SkipForward className="w-4 h-4 fill-current" />
+            </button>
           </div>
 
-          {/* Toggle Video Visibility */}
-          <button
-            onClick={() => setShowVideoEmbed(!showVideoEmbed)}
-            id="toggle-video-view-btn"
-            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 text-[#d8be87] text-[10px] font-rozha tracking-wider uppercase transition-colors cursor-pointer"
-            aria-label="Toggle visible video player"
-          >
-            <Video className="w-3 h-3" />
-            <span className="hidden xs:inline">
-              {showVideoEmbed ? 'HIDE VIDEO' : 'PERFORMANCE'}
-            </span>
-            {showVideoEmbed ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronUp className="w-3 h-3" />
-            )}
-          </button>
-        </div>
-
-        {/* Player Core: Artwork/Vinyl, Track Meta, Transport Controls */}
-        <div className="p-3.5 sm:p-5 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 sm:gap-6">
-            {/* LEFT: Analogue Vinyl & Track Info */}
-            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
-              {/* Spinning Vinyl Record (Decorative Analogue Element) */}
-              <div className="relative flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black shadow-[0_4px_16px_rgba(0,0,0,0.8)] border border-neutral-800 flex items-center justify-center">
-                <div
-                  className={`w-full h-full rounded-full flex items-center justify-center animate-spin-slow ${
-                    isPlaying ? '' : 'paused'
-                  }`}
-                >
-                  <Disc3 className="w-full h-full text-neutral-800" />
-                  {/* Vinyl Center Grooves & Label */}
-                  <div className="absolute inset-0 rounded-full border border-neutral-700/40 m-2" />
-                  <div className="absolute inset-0 rounded-full border border-neutral-700/30 m-3.5" />
-                  <div className="absolute w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#52231e] border border-[#d8be87]/50 flex items-center justify-center">
-                    <span className="font-bengali text-[8px] text-[#e8cf9b]">জ</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Title & Artist Info */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-rozha text-sm sm:text-base md:text-lg text-[#f7f3e9] truncate drop-shadow-sm">
-                    {currentTrack.title}
-                  </h3>
-                  {isBuffering && (
-                    <span className="text-[9px] font-rozha tracking-widest text-[#d8be87] uppercase animate-pulse">
-                      BUFFERING
-                    </span>
-                  )}
-                </div>
-
-                <p className="font-rozha text-xs sm:text-sm text-[#d8be87]/90 truncate">
-                  {currentTrack.artist}
-                  {currentTrack.raga && (
-                    <span className="text-white/45 ml-2 font-normal text-[11px]">
-                      · {currentTrack.raga}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-
-            {/* RIGHT: Transport Controls & Volume */}
-            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              {/* Previous Track */}
-              <button
-                onClick={onPrevious}
-                id="player-previous-btn"
-                className="p-2 sm:p-2.5 rounded-full text-[#e3dac7]/75 hover:text-[#f7f3e9] hover:bg-white/10 transition-all cursor-pointer"
-                aria-label="Previous recording"
-              >
-                <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-
-              {/* Play / Pause */}
-              <button
-                onClick={onPlayPause}
-                id="player-play-pause-btn"
-                className="p-2.5 sm:p-3.5 rounded-full bg-[#d8be87] hover:bg-[#ebd29f] text-[#140e10] shadow-[0_4px_16px_rgba(216,190,135,0.4)] hover:scale-105 transition-all cursor-pointer"
-                aria-label={isPlaying ? 'Pause playback' : 'Start playback'}
-              >
-                {isPlaying ? (
-                  <Pause className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
-                ) : (
-                  <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current translate-x-0.5" />
-                )}
-              </button>
-
-              {/* Next Track */}
-              <button
-                onClick={onNext}
-                id="player-next-btn"
-                className="p-2 sm:p-2.5 rounded-full text-[#e3dac7]/75 hover:text-[#f7f3e9] hover:bg-white/10 transition-all cursor-pointer"
-                aria-label="Next recording"
-              >
-                <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-
-              {/* Volume Slider (Desktop) */}
-              <div className="hidden md:flex items-center gap-2 pl-2 border-l border-white/10">
-                <button
-                  onClick={onToggleMute}
-                  className="text-[#e3dac7]/70 hover:text-white transition-colors cursor-pointer"
-                  aria-label={isMuted ? 'Unmute' : 'Mute'}
-                >
-                  {isMuted || volume === 0 ? (
-                    <VolumeX className="w-4 h-4 text-rose-400/80" />
-                  ) : (
-                    <Volume2 className="w-4 h-4" />
-                  )}
-                </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={isMuted ? 0 : volume}
-                  onChange={(e) => onVolumeChange(parseInt(e.target.value))}
-                  className="w-16 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[#d8be87]"
-                  aria-label="Volume slider"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Scrubber Progress Bar */}
-          <div className="flex items-center gap-3">
-            <span className="font-rozha text-[10px] text-[#e3dac7]/70 w-9 text-right tabular-nums">
-              {formatSeconds(currentTime)}
-            </span>
-
-            <div className="relative flex-1 flex items-center group">
+          {/* Minimal Integrated Scrubber Bar */}
+          <div className="w-full flex items-center gap-2 text-[10px] text-[#b5a38b] font-mono">
+            <span>{formatTime(currentTime)}</span>
+            <div className="relative flex-1 flex items-center group cursor-pointer">
               <input
                 type="range"
-                min="0"
-                max={duration > 0 ? duration : 100}
-                step="0.5"
-                value={isSeeking && seekTime !== null ? seekTime : currentTime}
-                onChange={handleSeekChange}
-                onMouseUp={handleSeekCommit}
-                onTouchEnd={handleSeekCommit}
-                className="w-full h-1.5 bg-white/15 rounded-lg appearance-none cursor-pointer accent-[#d8be87] relative z-10"
-                aria-label="Track progress seek bar"
-              />
-              <div
-                className="absolute left-0 top-0 bottom-0 bg-[#d8be87] rounded-lg pointer-events-none transition-all"
-                style={{ width: `${progressPercent}%` }}
+                min={0}
+                max={duration || 100}
+                value={currentTime}
+                onChange={handleSeek}
+                className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-[#e8cca0] group-hover:h-1.5 transition-all"
+                aria-label="Seek track position"
               />
             </div>
-
-            <span className="font-rozha text-[10px] text-[#e3dac7]/70 w-9 tabular-nums">
-              {formatSeconds(duration)}
-            </span>
+            <span>{formatTime(duration) || currentTrack.duration}</span>
           </div>
+        </div>
+
+        {/* RIGHT: Visible 16:9 YouTube Video Slot & Repertoire Button */}
+        <div className="flex items-center gap-2 min-w-[180px] justify-end">
+          <button
+            onClick={() => setShowQueue(!showQueue)}
+            className={`p-2 rounded-full transition-colors cursor-pointer ${
+              showQueue ? 'bg-white/20 text-[#e8cca0]' : 'text-[#d8be87]/80 hover:text-white hover:bg-white/10'
+            }`}
+            title="Repertoire Catalog"
+            aria-label="Toggle Repertoire"
+          >
+            <ListMusic className="w-4 h-4" />
+          </button>
+
+          {/* Visible YouTube Video Container (16:9) */}
+          <div
+            className={`transition-all duration-300 relative ${
+              isVideoExpanded
+                ? 'fixed bottom-24 right-6 w-80 shadow-[0_10px_40px_rgba(0,0,0,0.9)] z-50 rounded-xl overflow-hidden border border-[#d8be87]/30'
+                : 'w-24 h-14 rounded-lg overflow-hidden border border-white/10 shadow-md'
+            }`}
+          >
+            <YouTubePlayer
+              videoId={currentTrack.videoId}
+              isPlaying={isPlaying}
+              onPlayStateChange={(playing) => {
+                if (playing !== isPlaying) onTogglePlay();
+              }}
+              onEnded={handleEnded}
+              onError={handleError}
+              onProgress={handleProgress}
+              seekToTimestamp={seekTarget}
+              onSeekHandled={() => setSeekTarget(null)}
+              className="w-full h-full"
+            />
+
+            {/* Toggle Full Video / Expand Button */}
+            <button
+              onClick={() => setIsVideoExpanded(!isVideoExpanded)}
+              className="absolute top-1 right-1 p-1 rounded bg-black/60 text-white/80 hover:text-white hover:bg-black/80 transition-colors z-20"
+              title={isVideoExpanded ? 'Minimize Video' : 'Expand Video'}
+              aria-label={isVideoExpanded ? 'Minimize Video' : 'Expand Video'}
+            >
+              {isVideoExpanded ? (
+                <Minimize2 className="w-3 h-3" />
+              ) : (
+                <Maximize2 className="w-3 h-3" />
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* MOBILE PLAYER (STACKED COMPACT CARD) */}
+      <div className="flex md:hidden flex-col w-full max-w-sm bg-black/55 backdrop-blur-xl border border-white/12 rounded-3xl p-4 shadow-[0_12px_45px_rgba(0,0,0,0.85)] pointer-events-auto text-[#f5ede0]">
+        {/* Top Row: Mini Video/Artwork, Title, Subtitle, Heart */}
+        <div className="flex items-center gap-3 mb-3">
+          {/* Visible 16:9 YouTube Player */}
+          <div className="w-24 h-14 rounded-xl overflow-hidden border border-white/15 shrink-0 relative bg-black">
+            <YouTubePlayer
+              videoId={currentTrack.videoId}
+              isPlaying={isPlaying}
+              onPlayStateChange={(playing) => {
+                if (playing !== isPlaying) onTogglePlay();
+              }}
+              onEnded={handleEnded}
+              onError={handleError}
+              onProgress={handleProgress}
+              seekToTimestamp={seekTarget}
+              onSeekHandled={() => setSeekTarget(null)}
+              className="w-full h-full"
+            />
+          </div>
+
+          {/* Track Details */}
+          <div className="flex-1 min-w-0 pr-1">
+            <h3 className="font-rozha text-sm text-[#f4ebdc] truncate leading-snug">
+              {currentTrack.title}
+            </h3>
+            <p className="font-rozha text-xs text-[#c9b596] truncate">
+              {currentTrack.artist}
+            </p>
+          </div>
+
+          {/* Action / Favorite Button */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsFavorite(!isFavorite)}
+              className="p-2 rounded-full text-[#d8be87]/80 hover:text-red-400 transition-colors"
+              aria-label="Save Track"
+            >
+              <Heart
+                className={`w-4 h-4 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`}
+              />
+            </button>
+            <button
+              onClick={() => setShowQueue(!showQueue)}
+              className="p-2 rounded-full text-[#d8be87]/80 hover:text-white transition-colors"
+              aria-label="View Repertoire"
+            >
+              <ListMusic className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Middle Row: Progress Scrubber & Timestamps */}
+        <div className="mb-3">
+          <input
+            type="range"
+            min={0}
+            max={duration || 100}
+            value={currentTime}
+            onChange={handleSeek}
+            className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-[#e8cca0]"
+            aria-label="Seek track position"
+          />
+          <div className="flex items-center justify-between text-[10px] text-[#b5a38b] font-mono mt-1">
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(duration) || currentTrack.duration}</span>
+          </div>
+        </div>
+
+        {/* Bottom Row: Controls */}
+        <div className="flex items-center justify-between px-2">
+          <button
+            onClick={() => setIsShuffle(!isShuffle)}
+            className={`p-2 rounded-full transition-colors ${
+              isShuffle ? 'text-[#e8cca0]' : 'text-white/40 hover:text-white'
+            }`}
+            aria-label="Shuffle"
+          >
+            <Shuffle className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={onPrevious}
+            id="mobile-prev-btn"
+            className="p-2 rounded-full text-white/80 hover:text-white transition-colors"
+            aria-label="Previous Track"
+          >
+            <SkipBack className="w-5 h-5 fill-current" />
+          </button>
+
+          <button
+            onClick={onTogglePlay}
+            id="mobile-play-pause-btn"
+            className="w-12 h-12 rounded-full bg-[#e8cca0] text-black flex items-center justify-center shadow-[0_2px_15px_rgba(232,204,160,0.4)] active:scale-95 transition-transform"
+            aria-label={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? (
+              <Pause className="w-5 h-5 fill-black text-black" />
+            ) : (
+              <Play className="w-5 h-5 fill-black text-black ml-0.5" />
+            )}
+          </button>
+
+          <button
+            onClick={onNext}
+            id="mobile-next-btn"
+            className="p-2 rounded-full text-white/80 hover:text-white transition-colors"
+            aria-label="Next Track"
+          >
+            <SkipForward className="w-5 h-5 fill-current" />
+          </button>
+
+          <button
+            onClick={() => setIsRepeat(!isRepeat)}
+            className={`p-2 rounded-full transition-colors ${
+              isRepeat ? 'text-[#e8cca0]' : 'text-white/40 hover:text-white'
+            }`}
+            aria-label="Repeat"
+          >
+            <Repeat className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </div>

@@ -1,229 +1,146 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { TimeOfDay, PlaylistId, Track } from './types';
+import React, { useState, useEffect, useCallback } from 'react';
+import { TimeOfDay, Track, PlaylistId } from './types';
 import { getCurrentTimeOfDay } from './lib/time';
 import { TRACK_CATALOG, getTracksByPlaylist } from './lib/tracks';
 import { ArtworkView } from './components/ArtworkView';
-import { CurtainIntro } from './components/CurtainIntro';
-import { Header } from './components/Header';
 import { Wordmark } from './components/Wordmark';
+import { TopBar } from './components/TopBar';
 import { MusicPlayer } from './components/MusicPlayer';
-import { AboutDrawer } from './components/AboutDrawer';
+import { CurtainIntro } from './components/CurtainIntro';
+import { ContextualModals } from './components/ContextualModals';
+import { trackEvent } from './lib/analytics';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
-export default function App() {
-  // Time-of-day state
+export function App() {
+  // 1. Automatic Real-World Time-of-Day (Asia/Kolkata)
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(() => getCurrentTimeOfDay());
-  const [isAutoTime, setIsAutoTime] = useState<boolean>(true);
 
-  // Entrance Curtain State
-  const [hasEntered, setHasEntered] = useState<boolean>(false);
+  // 2. Curtain Threshold Experience
+  const [isCurtainOpen, setIsCurtainOpen] = useState<boolean>(false);
 
-  // Music Player State
+  // 3. Independent Music Playback State
   const [currentPlaylist, setCurrentPlaylist] = useState<PlaylistId>('baithak');
-  const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(0);
+  const playlistTracks = getTracksByPlaylist(currentPlaylist);
+  const [currentTrack, setCurrentTrack] = useState<Track>(playlistTracks[0] || TRACK_CATALOG[0]);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [isBuffering, setIsBuffering] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(85);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [unavailableTrackIds, setUnavailableTrackIds] = useState<Set<string>>(new Set());
-  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
 
-  // Info modal state
-  const [isInfoOpen, setIsInfoOpen] = useState<boolean>(false);
+  // 4. Floating Contextual Cards
+  const [creatorsOpen, setCreatorsOpen] = useState<boolean>(false);
+  const [supportOpen, setSupportOpen] = useState<boolean>(false);
 
-  // Automatic Time-of-day interval (updates every minute to sync with Kolkata time)
+  // Synchronize time-of-day with Asia/Kolkata on a regular interval
   useEffect(() => {
-    if (!isAutoTime) return;
-
-    const syncTime = () => {
-      const current = getCurrentTimeOfDay();
-      setTimeOfDay(current);
+    const checkTime = () => {
+      const detected = getCurrentTimeOfDay();
+      setTimeOfDay((prev) => {
+        if (prev !== detected) {
+          trackEvent('atmosphere_auto_transition', { from: prev, to: detected });
+          return detected;
+        }
+        return prev;
+      });
     };
 
-    syncTime();
-    const interval = setInterval(syncTime, 60000);
+    checkTime();
+    const interval = setInterval(checkTime, 10000);
     return () => clearInterval(interval);
-  }, [isAutoTime]);
+  }, []);
 
-  // Active playlist tracks
-  const playlistTracks = useMemo(() => {
-    const list = getTracksByPlaylist(currentPlaylist);
-    return list.length > 0 ? list : TRACK_CATALOG;
-  }, [currentPlaylist]);
-
-  const currentTrack: Track = useMemo(() => {
-    if (currentTrackIndex >= 0 && currentTrackIndex < playlistTracks.length) {
-      return playlistTracks[currentTrackIndex];
-    }
-    return playlistTracks[0] || TRACK_CATALOG[0];
-  }, [playlistTracks, currentTrackIndex]);
-
-  // Handle manual/auto time of day selection
-  const handleSelectTimeOfDay = (newTime: TimeOfDay, isManual: boolean) => {
-    setTimeOfDay(newTime);
-    setIsAutoTime(!isManual);
-  };
-
-  // Next Track with skipping unavailable tracks
-  const handleNextTrack = useCallback(() => {
-    let nextIdx = (currentTrackIndex + 1) % playlistTracks.length;
-    let attempts = 0;
-
-    // Find next playable track if current is marked unavailable
-    while (unavailableTrackIds.has(playlistTracks[nextIdx]?.id) && attempts < playlistTracks.length) {
-      nextIdx = (nextIdx + 1) % playlistTracks.length;
-      attempts++;
-    }
-
-    setCurrentTrackIndex(nextIdx);
-    setCurrentTime(0);
-    setIsPlaying(true);
-  }, [currentTrackIndex, playlistTracks, unavailableTrackIds]);
-
-  // Previous Track
-  const handlePreviousTrack = useCallback(() => {
-    let prevIdx = (currentTrackIndex - 1 + playlistTracks.length) % playlistTracks.length;
-    let attempts = 0;
-
-    while (unavailableTrackIds.has(playlistTracks[prevIdx]?.id) && attempts < playlistTracks.length) {
-      prevIdx = (prevIdx - 1 + playlistTracks.length) % playlistTracks.length;
-      attempts++;
-    }
-
-    setCurrentTrackIndex(prevIdx);
-    setCurrentTime(0);
-    setIsPlaying(true);
-  }, [currentTrackIndex, playlistTracks, unavailableTrackIds]);
-
-  // Switch Playlist
-  const handleSelectPlaylist = (newPlaylist: PlaylistId) => {
-    if (newPlaylist === currentPlaylist) return;
-    setCurrentPlaylist(newPlaylist);
-    setCurrentTrackIndex(0);
-    setCurrentTime(0);
-    setIsPlaying(true);
-  };
-
-  // Play / Pause
-  const handlePlayPause = () => {
-    setIsPlaying((prev) => !prev);
-  };
-
-  // YouTube Player Event Handlers
-  const handlePlayerReady = () => {
-    // If visitor already entered, begin playback quietly
-    if (hasEntered) {
-      setIsPlaying(true);
+  // Update playlist selection (completely independent of time-of-day)
+  const handlePlaylistChange = (playlist: PlaylistId) => {
+    setCurrentPlaylist(playlist);
+    const tracks = getTracksByPlaylist(playlist);
+    if (tracks.length > 0) {
+      setCurrentTrack(tracks[0]);
     }
   };
 
-  const handleStateChange = (state: number) => {
-    // YT.PlayerState: -1 (unstarted), 0 (ended), 1 (playing), 2 (paused), 3 (buffering), 5 (cued)
-    if (state === 1) {
-      setIsPlaying(true);
-      setIsBuffering(false);
-    } else if (state === 2) {
-      setIsPlaying(false);
-      setIsBuffering(false);
-    } else if (state === 3) {
-      setIsBuffering(true);
-    } else if (state === 0) {
-      // Track ended: advance to next
-      handleNextTrack();
-    }
-  };
-
-  const handleTimeUpdate = (curr: number, dur: number) => {
-    setCurrentTime(curr);
-    if (dur > 0) setDuration(dur);
-  };
-
-  const handlePlayerError = (errorCode: number) => {
-    console.warn(`[Jalsaghar] Playback code ${errorCode} on track:`, currentTrack.title);
-    
-    // Mark track unavailable for this session
-    setUnavailableTrackIds((prev) => {
-      const updated = new Set(prev);
-      updated.add(currentTrack.id);
-      return updated;
+  // Playback handlers
+  const handleTogglePlay = useCallback(() => {
+    setIsPlaying((prev) => {
+      const next = !prev;
+      trackEvent(next ? 'play' : 'pause', {
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+      });
+      return next;
     });
+  }, [currentTrack]);
 
-    // Quiet notification
-    setNoticeMessage('This recording is resting. Transitioning to the next raga...');
-    setTimeout(() => {
-      setNoticeMessage(null);
-    }, 4000);
+  const handleNext = useCallback(() => {
+    const currentIndex = playlistTracks.findIndex((t) => t.id === currentTrack.id);
+    const nextIndex = (currentIndex + 1) % playlistTracks.length;
+    const nextTrack = playlistTracks[nextIndex];
+    setCurrentTrack(nextTrack);
+    trackEvent('next_track', { title: nextTrack.title, artist: nextTrack.artist });
+  }, [playlistTracks, currentTrack]);
 
-    // Auto advance to next valid recording
-    setTimeout(() => {
-      handleNextTrack();
-    }, 1200);
-  };
+  const handlePrevious = useCallback(() => {
+    const currentIndex = playlistTracks.findIndex((t) => t.id === currentTrack.id);
+    const prevIndex = (currentIndex - 1 + playlistTracks.length) % playlistTracks.length;
+    const prevTrack = playlistTracks[prevIndex];
+    setCurrentTrack(prevTrack);
+    trackEvent('prev_track', { title: prevTrack.title, artist: prevTrack.artist });
+  }, [playlistTracks, currentTrack]);
 
-  // Visitor enters the Jalsaghar room
-  const handleEnterMehfil = () => {
-    setHasEntered(true);
+  const handleTrackSelect = (track: Track) => {
+    setCurrentTrack(track);
     setIsPlaying(true);
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden select-none bg-[#090607]">
-      {/* 1. Full-Screen Artwork Layer with Crossfade & Orientation Detection */}
+    <main className="relative w-screen h-screen overflow-hidden select-none bg-[#0a0607]">
+      {/* VERCEL TELEMETRY */}
+      <Analytics />
+      <SpeedInsights />
+
+      {/* 1. THE PAINTING / THE WORLD (LOCKED PRODUCTION ARTWORK) */}
       <ArtworkView timeOfDay={timeOfDay} />
 
-      {/* 2. Opening Curtain Physical Entrance (Transitional Layer) */}
-      {!hasEntered && (
-        <CurtainIntro timeOfDay={timeOfDay} onEnter={handleEnterMehfil} />
-      )}
+      {/* 2. TOP FLOATING BAR (KOLKATA TIME · LIVE · STREAMING & UTILITY PILLS) */}
+      <TopBar
+        onOpenCreators={() => setCreatorsOpen(true)}
+        onOpenSupport={() => setSupportOpen(true)}
+      />
 
-      {/* 3. Main Minimal Jalsaghar UI Experience */}
-      {hasEntered && (
-        <div className="relative z-30 w-full h-full flex flex-col justify-between pointer-events-none">
-          {/* Top Header */}
-          <Header
-            timeOfDay={timeOfDay}
-            isAutoTime={isAutoTime}
-            onSelectTimeOfDay={handleSelectTimeOfDay}
-            onToggleInfo={() => setIsInfoOpen(true)}
-          />
+      {/* 3. CENTER BRAND WORDMARK (CALM IN THE WORLD) */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-28 sm:pb-36 z-20">
+        <Wordmark size="default" showSubtitle={true} />
+      </div>
 
-          {/* Central Bengali Wordmark - Softly illuminated into the painting atmosphere */}
-          <main className="my-auto w-full flex flex-col items-center justify-center px-4 pb-20 sm:pb-28">
-            <Wordmark size="large" />
-          </main>
+      {/* 4. FLOATING MUSIC PLAYER (DESKTOP DOCK / MOBILE CARD WITH VISIBLE YOUTUBE) */}
+      <MusicPlayer
+        currentTrack={currentTrack}
+        isPlaying={isPlaying}
+        onTogglePlay={handleTogglePlay}
+        onNext={handleNext}
+        onPrevious={handlePrevious}
+        onTrackSelect={handleTrackSelect}
+        allTracks={playlistTracks}
+        currentPlaylist={currentPlaylist}
+        onPlaylistChange={handlePlaylistChange}
+      />
 
-          {/* Floating Horizontal Glass Music Player */}
-          <MusicPlayer
-            currentTrack={currentTrack}
-            currentPlaylist={currentPlaylist}
-            isPlaying={isPlaying}
-            isBuffering={isBuffering}
-            currentTime={currentTime}
-            duration={duration}
-            volume={volume}
-            isMuted={isMuted}
-            noticeMessage={noticeMessage}
-            onPlayPause={handlePlayPause}
-            onPrevious={handlePreviousTrack}
-            onNext={handleNextTrack}
-            onSeek={(sec) => setCurrentTime(sec)}
-            onVolumeChange={(v) => {
-              setVolume(v);
-              if (isMuted) setIsMuted(false);
-            }}
-            onToggleMute={() => setIsMuted((prev) => !prev)}
-            onSelectPlaylist={handleSelectPlaylist}
-            onPlayerReady={handlePlayerReady}
-            onStateChange={handleStateChange}
-            onTimeUpdate={handleTimeUpdate}
-            onError={handlePlayerError}
-          />
-        </div>
-      )}
+      {/* 5. CONTEXTUAL MODALS (MADE WITH BHALOBASHA / SUPPORT NOTE) */}
+      <ContextualModals
+        creatorsOpen={creatorsOpen}
+        supportOpen={supportOpen}
+        onCloseCreators={() => setCreatorsOpen(false)}
+        onCloseSupport={() => setSupportOpen(false)}
+      />
 
-      {/* 4. About Jalsaghar Information Modal */}
-      <AboutDrawer isOpen={isInfoOpen} onClose={() => setIsInfoOpen(false)} />
-    </div>
+      {/* 6. OPENING CURTAIN THRESHOLD EXPERIENCE */}
+      <CurtainIntro
+        isOpen={isCurtainOpen}
+        onOpen={() => {
+          setIsCurtainOpen(true);
+          // Gently start playing on curtain entrance
+          setIsPlaying(true);
+        }}
+      />
+    </main>
   );
 }
+
+export default App;

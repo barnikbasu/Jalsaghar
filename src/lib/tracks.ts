@@ -1,30 +1,25 @@
-import { PlaylistId, PlaylistInfo, Track } from '../types';
+import { PlaylistId, Track } from '../types';
 
-export const PLAYLISTS: Record<PlaylistId, PlaylistInfo> = {
-  baithak: {
-    id: 'baithak',
-    name: 'BAITHAK',
-    subtitle: 'Intimate Instrumental & Vocal Masters',
-    description: 'A close gathering of connoisseurs listening to legendary ustads and pandits in an intimate acoustic room.',
-  },
-  riyaz: {
-    id: 'riyaz',
-    name: 'RIYAZ',
-    subtitle: 'Contemplative Long-Form Alaap & Meditation',
-    description: 'Early morning & deep meditative practice explorations, uncovering the pure essence of classical swaras.',
-  },
-  mehfil: {
-    id: 'mehfil',
-    name: 'MEHFIL',
-    subtitle: 'Nocturnal Gatherings, Thumri & Romance',
-    description: 'Evening salon music, evocative thumris, dadras, and midnight ragas echoing under antique chandeliers.',
-  },
+export const EXTERNAL_LINKS = {
+  youtubeMusic: 'https://music.youtube.com/playlist?list=PLJAiFJ6bGyew',
+  spotify: 'https://open.spotify.com/playlist/1zVKSwcN1UDYBXsBWQlp16?si=-F4hxElZQqiGYqkdMnrgfg&nd=1&dlsi=9058ad3b40b24163',
 };
 
 export const TRACK_CATALOG: Track[] = [
-  // ==================== BAITHAK ====================
+  // ==================== BAITHAK (Intimate Instrumental & Vocal Masters) ====================
   {
     id: 'b1',
+    title: 'Raag Yaman',
+    artist: 'Ustad Rashid Khan',
+    raga: 'Raag Yaman',
+    gharana: 'Rampur-Sahaswan Gharana',
+    duration: '16:30',
+    videoId: '9eB3p1Z0vQ0',
+    playlistId: 'baithak',
+    notes: 'Sublime voice culture breathing pure evening tranquility into Yaman.',
+  },
+  {
+    id: 'b2',
     title: 'Raga Bhairavi (Live Baithak)',
     artist: 'Ustad Bismillah Khan',
     raga: 'Raga Bhairavi',
@@ -32,11 +27,10 @@ export const TRACK_CATALOG: Track[] = [
     duration: '15:20',
     videoId: 'qC8e1f0L_bE',
     playlistId: 'baithak',
-    timeOfDay: 'shokal',
     notes: 'Legendary shehnai recital imbued with soulful Banarasi thumri nuances.',
   },
   {
-    id: 'b2',
+    id: 'b3',
     title: 'Raga Malkauns (Live in Kolkata)',
     artist: 'Pandit Nikhil Banerjee',
     raga: 'Raga Malkauns',
@@ -44,20 +38,7 @@ export const TRACK_CATALOG: Track[] = [
     duration: '22:45',
     videoId: 'mD2a4gH-a88',
     playlistId: 'baithak',
-    timeOfDay: 'raat',
     notes: 'Deeply spiritual sitar alaap and gat celebrating nocturnal silence.',
-  },
-  {
-    id: 'b3',
-    title: 'Raga Yaman (Intimate Sitar Baithak)',
-    artist: 'Ustad Vilayat Khan',
-    raga: 'Raga Yaman',
-    gharana: 'Imdadkhani Gharana',
-    duration: '18:10',
-    videoId: 'sB2lqWvU_Jg',
-    playlistId: 'baithak',
-    timeOfDay: 'bikel',
-    notes: 'The quintessential gayaki ang evoking evening tranquility.',
   },
   {
     id: 'b4',
@@ -68,7 +49,6 @@ export const TRACK_CATALOG: Track[] = [
     duration: '24:30',
     videoId: 'h8Lw-s0M8tA',
     playlistId: 'baithak',
-    timeOfDay: 'dupur',
     notes: 'Majestic afternoon khayal resonating with devotional fervor.',
   },
   {
@@ -80,37 +60,23 @@ export const TRACK_CATALOG: Track[] = [
     duration: '19:40',
     videoId: 'Oa_0x9wG-qY',
     playlistId: 'baithak',
-    timeOfDay: 'bikel',
     notes: 'Hauntingly emotive sarod melodies woven across vintage rugs.',
   },
   {
     id: 'b6',
-    title: 'Raga Bageshri (Midnight Bansuri)',
+    title: 'Bageshree (Evening Mehfil)',
     artist: 'Pandit Hariprasad Chaurasia',
     raga: 'Raga Bageshri',
     gharana: 'Maihar Gharana',
     duration: '21:15',
     videoId: 'u_1BwP4a2_o',
     playlistId: 'baithak',
-    timeOfDay: 'raat',
     notes: 'Soothing bamboo flute evoking the gentle yearning of midnight.',
   },
 
-  // ==================== RIYAZ ====================
+  // ==================== RIYAZ (Contemplative Morning & Long-Form Alaap) ====================
   {
     id: 'r1',
-    title: 'Raga Darbari Kanada (Rudra Veena Alaap)',
-    artist: 'Ustad Asad Ali Khan',
-    raga: 'Raga Darbari Kanada',
-    gharana: 'Khandarbani Dhrupad',
-    duration: '28:10',
-    videoId: '0gQ_u5Vq9o8',
-    playlistId: 'riyaz',
-    timeOfDay: 'raat',
-    notes: 'Ancient microtonal andolans on the majestic Rudra Veena.',
-  },
-  {
-    id: 'r2',
     title: 'Raga Ahir Bhairav (Morning Santoor)',
     artist: 'Pandit Shivkumar Sharma',
     raga: 'Raga Ahir Bhairav',
@@ -118,11 +84,10 @@ export const TRACK_CATALOG: Track[] = [
     duration: '26:50',
     videoId: '4pE3v0G7b8Q',
     playlistId: 'riyaz',
-    timeOfDay: 'shokal',
     notes: 'Crystal clear acoustic raindrops awakening the morning dawn.',
   },
   {
-    id: 'r3',
+    id: 'r2',
     title: 'Raga Todi (Detailed Sitar Alaap & Jod)',
     artist: 'Ustad Shahid Parvez',
     raga: 'Raga Todi',
@@ -130,8 +95,18 @@ export const TRACK_CATALOG: Track[] = [
     duration: '31:20',
     videoId: 'kE6d9yV_a7A',
     playlistId: 'riyaz',
-    timeOfDay: 'shokal',
     notes: 'Austerity and profound introspection in the classical morning canon.',
+  },
+  {
+    id: 'r3',
+    title: 'Raga Darbari Kanada (Rudra Veena Alaap)',
+    artist: 'Ustad Asad Ali Khan',
+    raga: 'Raga Darbari Kanada',
+    gharana: 'Khandarbani Dhrupad',
+    duration: '28:10',
+    videoId: '0gQ_u5Vq9o8',
+    playlistId: 'riyaz',
+    notes: 'Ancient microtonal andolans on the majestic Rudra Veena.',
   },
   {
     id: 'r4',
@@ -142,37 +117,12 @@ export const TRACK_CATALOG: Track[] = [
     duration: '27:40',
     videoId: '2pW8m9_bXp0',
     playlistId: 'riyaz',
-    timeOfDay: 'bikel',
     notes: 'Luminous vocal expression exploring emotional bhakti.',
   },
-  {
-    id: 'r5',
-    title: 'Raga Shree (Dhyan & Alaap)',
-    artist: 'Pandit Kumar Gandharva',
-    raga: 'Raga Shree',
-    gharana: 'Gwalior / Unconventional',
-    duration: '23:15',
-    videoId: 'L0_9vR3sZ0c',
-    playlistId: 'riyaz',
-    timeOfDay: 'bikel',
-    notes: 'Solemn twilight meditation capturing mystical Indian sunsets.',
-  },
 
-  // ==================== MEHFIL ====================
+  // ==================== MEHFIL (Nocturnal Gatherings & Thumri) ====================
   {
     id: 'm1',
-    title: 'Deewana Banana Hai To Deewana Bana De',
-    artist: 'Begum Akhtar',
-    raga: 'Dadra / Ghazal',
-    gharana: 'Lucknow / Patiala',
-    duration: '06:45',
-    videoId: 'e9K3pW1yZ8E',
-    playlistId: 'mehfil',
-    timeOfDay: 'raat',
-    notes: 'The immortal Mallika-e-Ghazal capturing the fragrance of courtly baithaks.',
-  },
-  {
-    id: 'm2',
     title: 'Ras Ke Bhare Tore Nain (Thumri)',
     artist: 'Girija Devi',
     raga: 'Mishra Bhairavi',
@@ -180,8 +130,18 @@ export const TRACK_CATALOG: Track[] = [
     duration: '09:20',
     videoId: 'f9N2q4bZ_8w',
     playlistId: 'mehfil',
-    timeOfDay: 'raat',
     notes: 'Sensuous and tender Poorab Ang thumri by the Appaji of Banaras.',
+  },
+  {
+    id: 'm2',
+    title: 'Deewana Banana Hai To Deewana Bana De',
+    artist: 'Begum Akhtar',
+    raga: 'Dadra / Ghazal',
+    gharana: 'Lucknow / Patiala',
+    duration: '06:45',
+    videoId: 'e9K3pW1yZ8E',
+    playlistId: 'mehfil',
+    notes: 'The immortal Mallika-e-Ghazal capturing the fragrance of courtly baithaks.',
   },
   {
     id: 'm3',
@@ -192,7 +152,6 @@ export const TRACK_CATALOG: Track[] = [
     duration: '07:55',
     videoId: '1qP3a4oX_Y0',
     playlistId: 'mehfil',
-    timeOfDay: 'raat',
     notes: 'Unrivaled vocal ornamentations and nostalgic longing.',
   },
   {
@@ -204,38 +163,10 @@ export const TRACK_CATALOG: Track[] = [
     duration: '22:10',
     videoId: 'k8N3v0m9L_A',
     playlistId: 'mehfil',
-    timeOfDay: 'raat',
     notes: 'Silken romanticism in the heart of midnight.',
-  },
-  {
-    id: 'm5',
-    title: 'Raga Tilak Kamod & Tarana',
-    artist: 'Ustad Rashid Khan',
-    raga: 'Raga Tilak Kamod',
-    gharana: 'Rampur-Sahaswan Gharana',
-    duration: '16:30',
-    videoId: '9eB3p1Z0vQ0',
-    playlistId: 'mehfil',
-    timeOfDay: 'raat',
-    notes: 'Sublime voice culture breathing fresh life into classical beauty.',
-  },
-  {
-    id: 'm6',
-    title: 'Najariya Laagi Re (Thumri)',
-    artist: 'Shobha Gurtu',
-    raga: 'Mishra Khamaj',
-    gharana: 'Banaras / Gwalior',
-    duration: '08:50',
-    videoId: '8qK2v0xP_Y4',
-    playlistId: 'mehfil',
-    timeOfDay: 'bikel',
-    notes: 'The Queen of Thumri spinning delicate emotive nuances.',
   },
 ];
 
-/**
- * Filter tracks by playlist
- */
 export function getTracksByPlaylist(playlistId: PlaylistId): Track[] {
   return TRACK_CATALOG.filter((t) => t.playlistId === playlistId);
 }

@@ -1,17 +1,21 @@
-import { TimeOfDay, TimePeriodInfo } from '../types';
+import { TimeOfDay, TimePeriodConfig } from '../types';
 
 export const CANONICAL_TIMEZONE = 'Asia/Kolkata';
 
-export const TIME_PERIODS: Record<TimeOfDay, TimePeriodInfo> = {
+/**
+ * Canonical 4 Time-of-Day Configurations (Asia/Kolkata)
+ * 05:00–10:59 → SHOKAL
+ * 11:00–15:59 → DUPUR
+ * 16:00–18:59 → BIKEL
+ * 19:00–04:59 → RAAT
+ */
+export const TIME_PERIODS: Record<TimeOfDay, TimePeriodConfig> = {
   shokal: {
     id: 'shokal',
     name: 'SHOKAL',
-    bengaliName: 'সকাল',
-    period: '05:00 – 10:59',
+    label: 'Dawn & Morning Light',
     startHour: 5,
     endHour: 10,
-    description: 'Dawn & Morning Light · Prabhat',
-    ragas: 'Bhairav · Ahir Bhairav · Lalit · Todi · Jogiya',
     wideImage: '/bg/shokal-wide.png',
     tallImage: '/bg/shokal-tall.png',
     ambientTone: 'from-[#382d23] via-[#211a14] to-[#0d0a08]',
@@ -19,12 +23,9 @@ export const TIME_PERIODS: Record<TimeOfDay, TimePeriodInfo> = {
   dupur: {
     id: 'dupur',
     name: 'DUPUR',
-    bengaliName: 'দুপুর',
-    period: '11:00 – 15:59',
+    label: 'Midday Light',
     startHour: 11,
     endHour: 15,
-    description: 'Midday Glow · Madhyanna',
-    ragas: 'Multani · Bhimpalasi · Shuddh Sarang · Patdeep',
     wideImage: '/bg/dupur-wide.png',
     tallImage: '/bg/dupur-tall.png',
     ambientTone: 'from-[#423326] via-[#281e17] to-[#120d09]',
@@ -32,12 +33,9 @@ export const TIME_PERIODS: Record<TimeOfDay, TimePeriodInfo> = {
   bikel: {
     id: 'bikel',
     name: 'BIKEL',
-    bengaliName: 'বিকেল',
-    period: '16:00 – 18:59',
+    label: 'Twilight & Golden Dusk',
     startHour: 16,
     endHour: 18,
-    description: 'Golden Dusk & Twilight · Sandhiprakash',
-    ragas: 'Yaman · Yaman Kalyan · Khamaj · Bageshree · Desh',
     wideImage: '/bg/bikel-wide.png',
     tallImage: '/bg/bikel-tall.png',
     ambientTone: 'from-[#3a221f] via-[#241315] to-[#0f0709]',
@@ -45,12 +43,9 @@ export const TIME_PERIODS: Record<TimeOfDay, TimePeriodInfo> = {
   raat: {
     id: 'raat',
     name: 'RAAT',
-    bengaliName: 'রাত',
-    period: '19:00 – 04:59',
+    label: 'Deep Night & Mehfil',
     startHour: 19,
     endHour: 4,
-    description: 'Deep Night & Intimate Mehfil · Ratri',
-    ragas: 'Darbari Kanada · Malkauns · Bihag · Jog · Kedar · Rageshree',
     wideImage: '/bg/raat-wide.png',
     tallImage: '/bg/raat-tall.png',
     ambientTone: 'from-[#1a212b] via-[#10151d] to-[#080a0f]',
@@ -58,7 +53,7 @@ export const TIME_PERIODS: Record<TimeOfDay, TimePeriodInfo> = {
 };
 
 /**
- * Returns current date/time in Asia/Kolkata timezone
+ * Returns current Date object converted to Asia/Kolkata timezone
  */
 export function getKolkataDate(): Date {
   const now = new Date();
@@ -67,10 +62,10 @@ export function getKolkataDate(): Date {
 }
 
 /**
- * Computes current TimeOfDay according to Asia/Kolkata hour
+ * Determines current TimeOfDay automatically from current Asia/Kolkata hour
  */
-export function getCurrentTimeOfDay(customDate?: Date): TimeOfDay {
-  const kolkataDate = customDate || getKolkataDate();
+export function getCurrentTimeOfDay(): TimeOfDay {
+  const kolkataDate = getKolkataDate();
   const hour = kolkataDate.getHours();
 
   if (hour >= 5 && hour < 11) {
@@ -85,23 +80,16 @@ export function getCurrentTimeOfDay(customDate?: Date): TimeOfDay {
 }
 
 /**
- * Formats current Kolkata time string (e.g., "10:42 PM")
+ * Formats live Kolkata time (e.g., "1:44 AM · IST")
  */
-export function formatKolkataTime(customDate?: Date): string {
-  const date = customDate || new Date();
-  return new Intl.DateTimeFormat('en-IN', {
+export function formatKolkataTime(): string {
+  const date = new Date();
+  const timeFormatted = new Intl.DateTimeFormat('en-IN', {
     timeZone: CANONICAL_TIMEZONE,
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
   }).format(date);
-}
 
-/**
- * Formats full timestamp with Kolkata period (e.g., "10:42 PM · KOLKATA · RAAT")
- */
-export function formatKolkataFullString(timeOfDay?: TimeOfDay): string {
-  const timeStr = formatKolkataTime();
-  const period = (timeOfDay || getCurrentTimeOfDay()).toUpperCase();
-  return `${timeStr} · KOLKATA · ${period}`;
+  return `${timeFormatted} · IST`;
 }

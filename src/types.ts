@@ -13,26 +13,15 @@ export interface Track {
   duration?: string;
   videoId: string;
   playlistId: PlaylistId;
-  timeOfDay?: TimeOfDay;
   notes?: string;
 }
 
-export interface PlaylistInfo {
-  id: PlaylistId;
-  name: string;
-  description: string;
-  subtitle: string;
-}
-
-export interface TimePeriodInfo {
+export interface TimePeriodConfig {
   id: TimeOfDay;
-  name: string;
-  bengaliName: string;
-  period: string;
+  name: string; // 'SHOKAL', 'DUPUR', 'BIKEL', 'RAAT'
+  label: string; // 'Morning', 'Midday', 'Twilight', 'Night Mehfil'
   startHour: number;
   endHour: number;
-  description: string;
-  ragas: string;
   wideImage: string;
   tallImage: string;
   ambientTone: string;

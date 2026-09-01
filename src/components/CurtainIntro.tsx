@@ -1,155 +1,129 @@
 import React, { useState, useEffect } from 'react';
 import { Wordmark } from './Wordmark';
-import { formatKolkataFullString } from '../lib/time';
-import { TimeOfDay } from '../types';
+import { trackEvent } from '../lib/analytics';
 
 interface CurtainIntroProps {
-  timeOfDay: TimeOfDay;
-  onEnter: () => void;
+  isOpen: boolean;
+  onOpen: () => void;
 }
 
-export const CurtainIntro: React.FC<CurtainIntroProps> = ({ timeOfDay, onEnter }) => {
-  const [isOpening, setIsOpening] = useState(false);
-  const [isClosed, setIsClosed] = useState(true);
-  const [timeStr, setTimeStr] = useState('');
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+export const CurtainIntro: React.FC<CurtainIntroProps> = ({ isOpen, onOpen }) => {
+  const [isAnimating, setIsAnimating] = useState<boolean>(false);
+  const [isRendered, setIsRendered] = useState<boolean>(!isOpen);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(false);
 
   useEffect(() => {
-    // Check reduced motion
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setPrefersReducedMotion(mediaQuery.matches);
-
-    // Live Kolkata clock string
-    setTimeStr(formatKolkataFullString(timeOfDay));
-    const timer = setInterval(() => {
-      setTimeStr(formatKolkataFullString(timeOfDay));
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timeOfDay]);
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mq.matches);
+  }, []);
 
   const handleEnter = () => {
-    if (isOpening || !isClosed) return;
-
+    trackEvent('curtain_opened');
     if (prefersReducedMotion) {
-      setIsClosed(false);
-      onEnter();
+      onOpen();
+      setIsRendered(false);
       return;
     }
 
-    setIsOpening(true);
-
-    // Curtain opens with physical mass over 2.2 seconds
+    setIsAnimating(true);
     setTimeout(() => {
-      setIsClosed(false);
-      onEnter();
-    }, 2200);
+      onOpen();
+      setTimeout(() => {
+        setIsRendered(false);
+      }, 500);
+    }, 2000);
   };
 
-  if (!isClosed) return null;
+  if (!isRendered && isOpen) return null;
 
   return (
     <div
-      className={`fixed inset-0 z-50 overflow-hidden select-none transition-opacity duration-1000 ${
-        isOpening ? 'pointer-events-none' : 'pointer-events-auto'
+      className={`fixed inset-0 z-50 overflow-hidden pointer-events-auto transition-opacity duration-1000 ${
+        isOpen && !isAnimating ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
     >
-      {/* Light Shaft Behind Center Seam */}
+      {/* LEFT HEAVY VELVET CURTAIN PANEL */}
       <div
-        className={`absolute inset-y-0 left-1/2 -translate-x-1/2 z-10 w-2.5 transition-all duration-[2200ms] ease-out pointer-events-none ${
-          isOpening
-            ? 'w-full opacity-100 bg-amber-200/20'
-            : 'w-1 sm:w-1.5 opacity-90 light-slit-glow bg-[#ffc371]'
+        className={`absolute top-0 bottom-0 left-0 w-1/2 bg-[#1b080a] shadow-[20px_0_50px_rgba(0,0,0,0.9)] transition-transform duration-[2000ms] ease-[cubic-bezier(0.25,1,0.5,1)] z-10 ${
+          isAnimating ? '-translate-x-full' : 'translate-x-0'
         }`}
+        style={{
+          backgroundImage: `
+            repeating-linear-gradient(90deg, 
+              rgba(18,4,6,0.95) 0px, 
+              rgba(48,12,18,0.85) 24px, 
+              rgba(28,6,10,0.95) 48px, 
+              rgba(12,2,4,0.98) 72px, 
+              rgba(40,10,14,0.9) 96px
+            )
+          `,
+        }}
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-[#ffdb99] via-[#f7a046] to-[#d66b29] opacity-85 blur-[1px]" />
+        {/* Deep fabric shadow gradient */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-black/80 pointer-events-none" />
       </div>
 
-      {/* LEFT CURTAIN PANEL */}
+      {/* RIGHT HEAVY VELVET CURTAIN PANEL */}
       <div
-        className={`absolute top-0 bottom-0 left-0 w-1/2 z-20 curtain-left-folds shadow-[inset_-12px_0_30px_rgba(0,0,0,0.95)] transition-transform duration-[2200ms] cubic-bezier(0.22, 1, 0.36, 1) ${
-          isOpening ? '-translate-x-full scale-x-75 origin-left' : 'translate-x-0 scale-x-100'
+        className={`absolute top-0 bottom-0 right-0 w-1/2 bg-[#1b080a] shadow-[-20px_0_50px_rgba(0,0,0,0.9)] transition-transform duration-[2000ms] ease-[cubic-bezier(0.25,1,0.5,1)] z-10 ${
+          isAnimating ? 'translate-x-full' : 'translate-x-0'
         }`}
+        style={{
+          backgroundImage: `
+            repeating-linear-gradient(90deg, 
+              rgba(40,10,14,0.9) 0px, 
+              rgba(12,2,4,0.98) 24px, 
+              rgba(28,6,10,0.95) 48px, 
+              rgba(48,12,18,0.85) 72px, 
+              rgba(18,4,6,0.95) 96px
+            )
+          `,
+        }}
       >
-        {/* Textile Depth Folds & Subtle Highlights */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/10 via-black/40 to-black/80 pointer-events-none" />
-        
-        {/* Vertical velvet drapery ribs */}
-        <div className="absolute inset-0 flex justify-around opacity-35 pointer-events-none">
-          <div className="w-12 h-full bg-gradient-to-r from-black/60 via-red-950/20 to-black/70 blur-[2px]" />
-          <div className="w-16 h-full bg-gradient-to-r from-black/70 via-rose-950/30 to-black/80 blur-[2px]" />
-          <div className="w-14 h-full bg-gradient-to-r from-black/60 via-red-950/20 to-black/70 blur-[2px]" />
-          <div className="w-8 h-full bg-gradient-to-r from-black/80 via-transparent to-black/90 blur-[1px]" />
-        </div>
-
-        {/* Center seam edge shadow */}
-        <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-black via-black/80 to-transparent" />
+        {/* Deep fabric shadow gradient */}
+        <div className="absolute inset-0 bg-gradient-to-l from-black/60 via-transparent to-black/80 pointer-events-none" />
       </div>
 
-      {/* RIGHT CURTAIN PANEL */}
+      {/* CENTER GOLDEN SEAM LIGHT GLOW (Visible before parting) */}
       <div
-        className={`absolute top-0 bottom-0 right-0 w-1/2 z-20 curtain-right-folds shadow-[inset_12px_0_30px_rgba(0,0,0,0.95)] transition-transform duration-[2200ms] cubic-bezier(0.22, 1, 0.36, 1) ${
-          isOpening ? 'translate-x-full scale-x-75 origin-right' : 'translate-x-0 scale-x-100'
+        className={`absolute inset-y-0 left-1/2 -translate-x-1/2 w-[2px] bg-[#e8cca0] shadow-[0_0_40px_10px_rgba(232,204,160,0.6)] z-20 pointer-events-none transition-opacity duration-700 ${
+          isAnimating ? 'opacity-0 scale-y-110' : 'opacity-80 animate-pulse'
+        }`}
+      />
+
+      {/* CENTER INTRO CONTENT & THRESHOLD CTA */}
+      <div
+        className={`absolute inset-0 flex flex-col items-center justify-center z-30 px-6 select-none transition-all duration-700 ${
+          isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
         }`}
       >
-        {/* Textile Depth Folds & Subtle Highlights */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/10 via-black/40 to-black/80 pointer-events-none" />
-        
-        {/* Vertical velvet drapery ribs */}
-        <div className="absolute inset-0 flex justify-around opacity-35 pointer-events-none">
-          <div className="w-8 h-full bg-gradient-to-r from-black/90 via-transparent to-black/80 blur-[1px]" />
-          <div className="w-14 h-full bg-gradient-to-r from-black/70 via-red-950/20 to-black/60 blur-[2px]" />
-          <div className="w-16 h-full bg-gradient-to-r from-black/80 via-rose-950/30 to-black/70 blur-[2px]" />
-          <div className="w-12 h-full bg-gradient-to-r from-black/70 via-red-950/20 to-black/60 blur-[2px]" />
-        </div>
+        {/* Central Bengali Brand Wordmark */}
+        <Wordmark size="intro" showSubtitle={true} className="mb-8 sm:mb-12" />
 
-        {/* Center seam edge shadow */}
-        <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-black via-black/80 to-transparent" />
-      </div>
-
-      {/* Grain layer over curtain */}
-      <div className="absolute inset-0 z-25 film-grain opacity-40 mix-blend-overlay pointer-events-none" />
-
-      {/* FOREGROUND OVERLAY: Metadata & Entry Affordance */}
-      <div
-        className={`absolute inset-0 z-30 flex flex-col justify-between p-6 sm:p-10 safe-pt safe-pb safe-pl safe-pr transition-all duration-1000 ${
-          isOpening ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
-        }`}
-      >
-        {/* Top Environmental Metadata */}
-        <header className="w-full flex items-center justify-between text-[#d6be96]/80 text-[11px] sm:text-xs font-rozha tracking-widest uppercase">
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#d6be96] opacity-70 animate-pulse" />
-            <span>{timeStr || 'KOLKATA TIME'}</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500/80" />
-            <span>ON AIR · MEHFIL</span>
-          </div>
-        </header>
-
-        {/* Center Wordmark */}
-        <main className="my-auto py-12 flex flex-col items-center justify-center">
-          <Wordmark size="intro" />
-        </main>
-
-        {/* Bottom Entrance Trigger Button */}
-        <footer className="w-full flex flex-col items-center justify-center pb-2 sm:pb-6">
-          <button
-            onClick={handleEnter}
-            id="enter-jalsaghar-button"
-            className="group relative flex items-center gap-3 px-6 py-3 rounded-full bg-[#180a0e]/80 hover:bg-[#281118]/90 border border-[#e2c785]/25 hover:border-[#e2c785]/50 text-[#e6cca0] font-rozha text-xs sm:text-sm tracking-[0.25em] uppercase transition-all duration-300 shadow-[0_10px_30px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.1)] hover:scale-[1.02] cursor-pointer"
-            aria-label="Enter the Jalsaghar digital mehfil"
-          >
-            <span className="font-bengali text-sm text-[#e8cf9b]">জলসাঘর</span>
-            <span className="text-white/40">·</span>
-            <span>ENTER THE JALSAGHAR</span>
-            <span className="text-[#e2c785] transition-transform duration-300 group-hover:translate-x-1">
+        {/* Enter Room Action Button */}
+        <button
+          onClick={handleEnter}
+          id="enter-jalsaghar-btn"
+          className="group relative px-8 sm:px-10 py-3.5 sm:py-4 rounded-full bg-black/50 hover:bg-black/70 text-[#f4ebdc] border border-[#e8cca0]/40 hover:border-[#e8cca0] shadow-[0_4px_25px_rgba(0,0,0,0.7)] backdrop-blur-md transition-all duration-300 cursor-pointer"
+          aria-label="Enter the Jalsaghar digital mehfil"
+        >
+          <div className="flex items-center gap-3">
+            <span className="font-rozha text-xs sm:text-sm tracking-[0.3em] uppercase text-[#e8cca0] group-hover:text-[#fff4dc] transition-colors">
+              ENTER THE JALSAGHAR
+            </span>
+            <span className="text-[#e8cca0] transform group-hover:translate-x-1.5 transition-transform duration-300 text-sm sm:text-base">
               →
             </span>
-          </button>
-        </footer>
+          </div>
+
+          {/* Ambient Glow */}
+          <div className="absolute inset-0 rounded-full bg-[#e8cca0]/5 group-hover:bg-[#e8cca0]/15 transition-all blur-sm -z-10" />
+        </button>
+
+        {/* Restrained contextual caption */}
+        <p className="font-rozha text-[11px] sm:text-xs tracking-[0.25em] text-[#d6be96]/60 uppercase mt-6 drop-shadow-md">
+          A SANCTUARY FOR INDIAN CLASSICAL MUSIC
+        </p>
       </div>
     </div>
   );
