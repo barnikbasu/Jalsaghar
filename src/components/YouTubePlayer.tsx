@@ -1,5 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useImperativeHandle,
+  forwardRef,
+} from 'react';
 import { trackEvent } from '../lib/analytics';
+import { extractYouTubeVideoId } from '../lib/youtube';
 
 declare global {
   interface Window {
@@ -8,227 +15,350 @@ declare global {
   }
 }
 
+export interface YouTubePlayerRef {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number) => void;
+  setVolume: (volume: number) => void;
+  setMuted: (isMuted: boolean) => void;
+  isReady: () => boolean;
+  getCurrentTime: () => number;
+  getDuration: () => number;
+}
+
 interface YouTubePlayerProps {
-  videoId: string;
-  isPlaying: boolean;
-  volume: number; // 0 - 100 effective volume
+  youtubeUrl: string;
+  volume: number; // 0 - 100
   isMuted: boolean;
   onPlayStateChange: (isPlaying: boolean) => void;
   onBufferingChange?: (isBuffering: boolean) => void;
   onEnded: () => void;
-  onError: (errorCode: number) => void;
+  onError?: (errorCode: number, message?: string) => void;
   onProgress: (currentTime: number, duration: number, bufferedFraction: number) => void;
-  seekToTimestamp: number | null;
-  onSeekHandled: () => void;
   className?: string;
 }
 
-export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
-  videoId,
-  isPlaying,
-  volume,
-  isMuted,
-  onPlayStateChange,
-  onBufferingChange,
-  onEnded,
-  onError,
-  onProgress,
-  seekToTimestamp,
-  onSeekHandled,
-  className = '',
-}) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<any>(null);
-  const [isApiReady, setIsApiReady] = useState<boolean>(false);
-  const [isPlayerReady, setIsPlayerReady] = useState<boolean>(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
+  (
+    {
+      youtubeUrl,
+      volume,
+      isMuted,
+      onPlayStateChange,
+      onBufferingChange,
+      onEnded,
+      onError,
+      onProgress,
+      className = '',
+    },
+    ref
+  ) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const playerRef = useRef<any>(null);
 
-  // Load YouTube IFrame API script once safely
-  useEffect(() => {
-    if (window.YT && window.YT.Player) {
-      setIsApiReady(true);
-      return;
-    }
+    // Track initialization, readiness, and user intent
+    const isPlayerReadyRef = useRef<boolean>(false);
+    const intendedPlayingRef = useRef<boolean>(false);
+    const currentVideoIdRef = useRef<string>('');
+    const volumeRef = useRef<number>(volume);
+    const isMutedRef = useRef<boolean>(isMuted);
 
-    const existingTag = document.querySelector('script[src*="youtube.com/iframe_api"]');
-    if (!existingTag) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      tag.async = true;
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
-    }
+    const [isApiReady, setIsApiReady] = useState<boolean>(false);
+    const [isPlayerReady, setIsPlayerReady] = useState<boolean>(false);
 
-    const prevCallback = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      if (typeof prevCallback === 'function') prevCallback();
-      setIsApiReady(true);
-    };
-  }, []);
+    // Keep refs in sync with latest props
+    volumeRef.current = volume;
+    isMutedRef.current = isMuted;
 
-  // Initialize YT.Player when API and container are ready
-  useEffect(() => {
-    if (!isApiReady || !containerRef.current || playerRef.current) return;
+    const videoId = extractYouTubeVideoId(youtubeUrl);
+    currentVideoIdRef.current = videoId;
 
-    try {
-      playerRef.current = new window.YT.Player(containerRef.current, {
-        videoId: videoId,
-        playerVars: {
-          autoplay: 0,
-          controls: 0,
-          disablekb: 1,
-          fs: 0,
-          iv_load_policy: 3,
-          modestbranding: 1,
-          rel: 0,
-          showinfo: 0,
-          playsinline: 1,
-          origin: typeof window !== 'undefined' ? window.location.origin : '',
-        },
-        events: {
-          onReady: (event: any) => {
-            setIsPlayerReady(true);
+    // Expose direct imperative playback controls to the JALSAGHAR music player
+    useImperativeHandle(
+      ref,
+      () => ({
+        playVideo: () => {
+          intendedPlayingRef.current = true;
+          if (isPlayerReadyRef.current && playerRef.current) {
             try {
-              if (isMuted) {
-                event.target.mute();
+              playerRef.current.playVideo();
+            } catch (err) {
+              console.warn('Direct playVideo error:', err);
+            }
+          }
+        },
+        pauseVideo: () => {
+          intendedPlayingRef.current = false;
+          if (isPlayerReadyRef.current && playerRef.current) {
+            try {
+              playerRef.current.pauseVideo();
+            } catch (err) {
+              console.warn('Direct pauseVideo error:', err);
+            }
+          }
+        },
+        seekTo: (seconds: number) => {
+          if (isPlayerReadyRef.current && playerRef.current) {
+            try {
+              playerRef.current.seekTo(seconds, true);
+            } catch (err) {
+              console.warn('Direct seekTo error:', err);
+            }
+          }
+        },
+        setVolume: (vol: number) => {
+          volumeRef.current = vol;
+          if (isPlayerReadyRef.current && playerRef.current) {
+            try {
+              playerRef.current.setVolume(vol);
+            } catch {}
+          }
+        },
+        setMuted: (muted: boolean) => {
+          isMutedRef.current = muted;
+          if (isPlayerReadyRef.current && playerRef.current) {
+            try {
+              if (muted) {
+                playerRef.current.mute();
               } else {
-                event.target.unMute();
-                event.target.setVolume(volume);
-              }
-              if (isPlaying) {
-                event.target.playVideo();
+                playerRef.current.unMute();
+                playerRef.current.setVolume(volumeRef.current);
               }
             } catch {}
-          },
-          onStateChange: (event: any) => {
-            // YT.PlayerState: UNSTARTED (-1), ENDED (0), PLAYING (1), PAUSED (2), BUFFERING (3), CUED (5)
-            if (event.data === window.YT.PlayerState.PLAYING) {
-              onPlayStateChange(true);
-              if (onBufferingChange) onBufferingChange(false);
-              setErrorMessage(null);
-            } else if (event.data === window.YT.PlayerState.PAUSED) {
-              onPlayStateChange(false);
-              if (onBufferingChange) onBufferingChange(false);
-            } else if (event.data === window.YT.PlayerState.BUFFERING) {
-              if (onBufferingChange) onBufferingChange(true);
-            } else if (event.data === window.YT.PlayerState.ENDED) {
-              if (onBufferingChange) onBufferingChange(false);
-              trackEvent('track_ended', { videoId });
-              onEnded();
-            }
-          },
-          onError: (event: any) => {
-            const errorCode = event.data;
-            trackEvent('youtube_error', { errorCode, videoId });
-            if (onBufferingChange) onBufferingChange(false);
-            if (errorCode === 150 || errorCode === 101) {
-              setErrorMessage("This recording isn't available here. Advancing gracefully...");
-            } else {
-              setErrorMessage('Audio stream unavailable. Advancing...');
-            }
-            onError(errorCode);
-          },
+          }
         },
-      });
-    } catch {
-      // Fallback
-    }
+        isReady: () => isPlayerReadyRef.current,
+        getCurrentTime: () => {
+          try {
+            return playerRef.current?.getCurrentTime?.() || 0;
+          } catch {
+            return 0;
+          }
+        },
+        getDuration: () => {
+          try {
+            return playerRef.current?.getDuration?.() || 0;
+          } catch {
+            return 0;
+          }
+        },
+      }),
+      []
+    );
 
-    return () => {
-      if (playerRef.current && typeof playerRef.current.destroy === 'function') {
-        try {
-          playerRef.current.destroy();
-        } catch {}
-        playerRef.current = null;
+    // 1. Load YouTube IFrame API script once safely
+    useEffect(() => {
+      if (window.YT && window.YT.Player) {
+        setIsApiReady(true);
+        return;
       }
-    };
-  }, [isApiReady]);
 
-  // Load new video ID when track changes without destroying player
-  useEffect(() => {
-    if (!isPlayerReady || !playerRef.current) return;
-
-    try {
-      if (isPlaying) {
-        playerRef.current.loadVideoById(videoId);
-      } else {
-        playerRef.current.cueVideoById(videoId);
+      const existingTag = document.querySelector('script[src*="youtube.com/iframe_api"]');
+      if (!existingTag) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        tag.async = true;
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
       }
-      setErrorMessage(null);
-    } catch {}
-  }, [videoId, isPlayerReady]);
 
-  // Sync play / pause state
-  useEffect(() => {
-    if (!isPlayerReady || !playerRef.current) return;
+      const prevCallback = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (typeof prevCallback === 'function') prevCallback();
+        setIsApiReady(true);
+      };
+    }, []);
 
-    try {
-      const state = playerRef.current.getPlayerState();
-      if (isPlaying && state !== window.YT.PlayerState.PLAYING && state !== window.YT.PlayerState.BUFFERING) {
-        playerRef.current.playVideo();
-      } else if (!isPlaying && state === window.YT.PlayerState.PLAYING) {
-        playerRef.current.pauseVideo();
-      }
-    } catch {}
-  }, [isPlaying, isPlayerReady]);
+    // 2. Initialize YT.Player ONCE when API and container are ready
+    useEffect(() => {
+      if (!isApiReady || !containerRef.current || playerRef.current) return;
 
-  // Sync volume and mute with GainController outputs
-  useEffect(() => {
-    if (!isPlayerReady || !playerRef.current) return;
+      const initialVideoId = currentVideoIdRef.current;
+      if (!initialVideoId) return;
 
-    try {
-      if (isMuted) {
-        playerRef.current.mute();
-      } else {
-        playerRef.current.unMute();
-        playerRef.current.setVolume(volume);
-      }
-    } catch {}
-  }, [volume, isMuted, isPlayerReady]);
-
-  // Handle external seek requests
-  useEffect(() => {
-    if (seekToTimestamp !== null && isPlayerReady && playerRef.current) {
       try {
-        playerRef.current.seekTo(seekToTimestamp, true);
-        onSeekHandled();
-      } catch {}
-    }
-  }, [seekToTimestamp, isPlayerReady]);
+        const originParam =
+          typeof window !== 'undefined' &&
+          window.location.origin &&
+          window.location.origin !== 'null'
+            ? window.location.origin
+            : undefined;
 
-  // Polling loop for playback progress & buffered fraction (every 250ms for smooth UI)
-  useEffect(() => {
-    if (!isPlayerReady || !isPlaying) return;
+        playerRef.current = new window.YT.Player(containerRef.current, {
+          videoId: initialVideoId,
+          width: '200',
+          height: '113',
+          playerVars: {
+            autoplay: 0,
+            controls: 0, // CRITICAL: Disable native YouTube controls so custom JALSAGHAR player is primary!
+            enablejsapi: 1, // CRITICAL: REQUIRED to allow JavaScript API commands!
+            disablekb: 1, // Disable YouTube keyboard shortcuts so JALSAGHAR handles them
+            fs: 0,
+            iv_load_policy: 3,
+            modestbranding: 1,
+            rel: 0,
+            playsinline: 1,
+            origin: originParam,
+          },
+          events: {
+            onReady: (event: any) => {
+              isPlayerReadyRef.current = true;
+              setIsPlayerReady(true);
 
-    const interval = setInterval(() => {
+              // Apply initial volume & mute state
+              try {
+                if (isMutedRef.current) {
+                  event.target.mute();
+                } else {
+                  event.target.unMute();
+                  event.target.setVolume(volumeRef.current);
+                }
+              } catch {}
+
+              // Initial duration check
+              try {
+                const total = event.target?.getDuration?.() || 0;
+                const curr = event.target?.getCurrentTime?.() || 0;
+                const loaded = event.target?.getVideoLoadedFraction?.() || 0;
+                if (total > 0) {
+                  onProgress(curr, total, loaded);
+                }
+              } catch {}
+
+              // Fulfill user's play intent if Play was clicked before onReady
+              if (intendedPlayingRef.current) {
+                try {
+                  event.target.playVideo();
+                } catch (err) {
+                  console.warn('onReady playVideo error:', err);
+                }
+              }
+            },
+            onStateChange: (event: any) => {
+              if (!window.YT) return;
+              const state = event.data;
+
+              // Immediately check duration and update progress
+              try {
+                const total = event.target?.getDuration?.() || 0;
+                const curr = event.target?.getCurrentTime?.() || 0;
+                const loaded = event.target?.getVideoLoadedFraction?.() || 0;
+                if (total > 0) {
+                  onProgress(curr, total, loaded);
+                }
+              } catch {}
+
+              if (state === window.YT.PlayerState.PLAYING) {
+                intendedPlayingRef.current = true;
+                onPlayStateChange(true);
+                if (onBufferingChange) onBufferingChange(false);
+              } else if (state === window.YT.PlayerState.PAUSED) {
+                intendedPlayingRef.current = false;
+                onPlayStateChange(false);
+                if (onBufferingChange) onBufferingChange(false);
+              } else if (state === window.YT.PlayerState.BUFFERING) {
+                if (onBufferingChange) onBufferingChange(true);
+              } else if (state === window.YT.PlayerState.ENDED) {
+                intendedPlayingRef.current = false;
+                onPlayStateChange(false);
+                if (onBufferingChange) onBufferingChange(false);
+                trackEvent('track_ended', { videoId: currentVideoIdRef.current });
+                onEnded();
+              } else if (state === window.YT.PlayerState.CUED) {
+                if (onBufferingChange) onBufferingChange(false);
+              }
+            },
+            onError: (event: any) => {
+              const errorCode = event.data;
+              trackEvent('youtube_error', { errorCode, videoId: currentVideoIdRef.current });
+              if (onBufferingChange) onBufferingChange(false);
+
+              let msg = 'Playback restricted for this archival recording.';
+              if (errorCode === 101 || errorCode === 150) {
+                msg = 'Embedding restricted by publisher. Please use Next or Previous to continue.';
+              } else if (errorCode === 2) {
+                msg = 'Invalid recording identifier.';
+              } else if (errorCode === 5) {
+                msg = 'HTML5 player error.';
+              }
+
+              if (onError) onError(errorCode, msg);
+            },
+          },
+        });
+      } catch (err) {
+        console.warn('Error instantiating YT.Player:', err);
+      }
+
+      return () => {
+        if (playerRef.current && typeof playerRef.current.destroy === 'function') {
+          try {
+            playerRef.current.destroy();
+          } catch {}
+          playerRef.current = null;
+          isPlayerReadyRef.current = false;
+        }
+      };
+    }, [isApiReady]);
+
+    // 3. Track transition without recreating or resetting the player instance
+    useEffect(() => {
+      if (!isPlayerReadyRef.current || !playerRef.current || !videoId) return;
+
       try {
-        if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
-          const current = playerRef.current.getCurrentTime() || 0;
-          const total = playerRef.current.getDuration() || 0;
-          const loadedFraction =
-            typeof playerRef.current.getVideoLoadedFraction === 'function'
-              ? playerRef.current.getVideoLoadedFraction() || 0
-              : 0;
-          onProgress(current, total, loadedFraction);
+        if (intendedPlayingRef.current) {
+          playerRef.current.loadVideoById(videoId);
+        } else {
+          playerRef.current.cueVideoById(videoId);
+        }
+      } catch (err) {
+        console.warn('Error loading new video on track change:', err);
+      }
+    }, [videoId]);
+
+    // 4. Volume and mute synchronization
+    useEffect(() => {
+      if (!isPlayerReadyRef.current || !playerRef.current) return;
+      try {
+        if (isMuted) {
+          playerRef.current.mute();
+        } else {
+          playerRef.current.unMute();
+          playerRef.current.setVolume(volume);
         }
       } catch {}
-    }, 250);
+    }, [volume, isMuted, isPlayerReady]);
 
-    return () => clearInterval(interval);
-  }, [isPlayerReady, isPlaying]);
+    // 5. Lightweight progress polling loop (250ms)
+    useEffect(() => {
+      if (!isPlayerReady) return;
 
-  return (
-    <div className={`relative aspect-video overflow-hidden rounded-lg bg-black/90 ${className}`}>
-      {/* 16:9 YouTube Visible Player Container (Compliant with YouTube terms) */}
-      <div ref={containerRef} className="w-full h-full object-cover" />
+      const interval = setInterval(() => {
+        try {
+          if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+            const current = playerRef.current.getCurrentTime() || 0;
+            const total = playerRef.current.getDuration() || 0;
+            const loadedFraction =
+              typeof playerRef.current.getVideoLoadedFraction === 'function'
+                ? playerRef.current.getVideoLoadedFraction() || 0
+                : 0;
+            onProgress(current, total, loadedFraction);
+          }
+        } catch {}
+      }, 250);
 
-      {/* Graceful notification overlay on playback error */}
-      {errorMessage && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center p-2 bg-black/85 text-center text-[#e8cca0] font-rozha text-xs">
-          <p>{errorMessage}</p>
-        </div>
-      )}
-    </div>
-  );
-};
+      return () => clearInterval(interval);
+    }, [isPlayerReady, onProgress]);
 
+    return (
+      <div
+        className={`w-[200px] h-[113px] rounded-xl overflow-hidden shadow-2xl border border-amber-900/30 bg-black pointer-events-auto ${className}`}
+      >
+        {/* Unobtrusive, 100% compliant, standard minimum 200x113 YouTube iframe container */}
+        <div ref={containerRef} className="w-full h-full" />
+      </div>
+    );
+  }
+);
+
+YouTubePlayer.displayName = 'YouTubePlayer';

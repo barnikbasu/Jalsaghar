@@ -5,9 +5,14 @@ import { trackEvent } from '../lib/analytics';
 interface CurtainIntroProps {
   isOpen: boolean;
   onOpen: () => void;
+  onStartPlayback?: () => void;
 }
 
-export const CurtainIntro: React.FC<CurtainIntroProps> = ({ isOpen, onOpen }) => {
+export const CurtainIntro: React.FC<CurtainIntroProps> = ({
+  isOpen,
+  onOpen,
+  onStartPlayback,
+}) => {
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
   const [isRendered, setIsRendered] = useState<boolean>(!isOpen);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(false);
@@ -19,6 +24,11 @@ export const CurtainIntro: React.FC<CurtainIntroProps> = ({ isOpen, onOpen }) =>
 
   const handleEnter = () => {
     trackEvent('curtain_opened');
+    if (onStartPlayback) {
+      try {
+        onStartPlayback();
+      } catch {}
+    }
     if (prefersReducedMotion) {
       onOpen();
       setIsRendered(false);

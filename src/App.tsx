@@ -8,6 +8,7 @@ import { TopBar } from './components/TopBar';
 import { MusicPlayer } from './components/MusicPlayer';
 import { CurtainIntro } from './components/CurtainIntro';
 import { ContextualModals } from './components/ContextualModals';
+import { RaagIndexModal } from './components/player/RaagIndexModal';
 import { trackEvent } from './lib/analytics';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
@@ -25,9 +26,10 @@ export function App() {
   const [currentTrack, setCurrentTrack] = useState<Track>(playlistTracks[0] || TRACK_CATALOG[0]);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
-  // 4. Floating Contextual Cards
+  // 4. Floating Contextual Cards & Archival Index
   const [creatorsOpen, setCreatorsOpen] = useState<boolean>(false);
   const [supportOpen, setSupportOpen] = useState<boolean>(false);
+  const [isRaagIndexOpen, setIsRaagIndexOpen] = useState<boolean>(false);
 
   // Synchronize time-of-day with Asia/Kolkata on a regular interval
   useEffect(() => {
@@ -67,6 +69,17 @@ export function App() {
       return next;
     });
   }, [currentTrack]);
+
+  const handlePlayChange = useCallback(
+    (playing: boolean) => {
+      setIsPlaying(playing);
+      trackEvent(playing ? 'play' : 'pause', {
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+      });
+    },
+    [currentTrack]
+  );
 
   const handleNext = useCallback(() => {
     const currentIndex = playlistTracks.findIndex((t) => t.id === currentTrack.id);
@@ -114,15 +127,29 @@ export function App() {
         currentTrack={currentTrack}
         isPlaying={isPlaying}
         onTogglePlay={handleTogglePlay}
+        onPlayChange={handlePlayChange}
         onNext={handleNext}
         onPrevious={handlePrevious}
         onTrackSelect={handleTrackSelect}
         allTracks={playlistTracks}
         currentPlaylist={currentPlaylist}
         onPlaylistChange={handlePlaylistChange}
+        onOpenRaagIndex={() => setIsRaagIndexOpen(true)}
+        isRaagIndexOpen={isRaagIndexOpen}
       />
 
-      {/* 5. CONTEXTUAL MODALS (MADE WITH BHALOBASHA / SUPPORT NOTE) */}
+      {/* 5. ARCHIVAL / RAAG INDEX MODAL */}
+      <RaagIndexModal
+        isOpen={isRaagIndexOpen}
+        onClose={() => setIsRaagIndexOpen(false)}
+        onSelectTrack={(track) => {
+          handleTrackSelect(track);
+          setIsRaagIndexOpen(false);
+        }}
+        currentTrackId={currentTrack.id}
+      />
+
+      {/* 6. CONTEXTUAL MODALS (MADE WITH BHALOBASHA / SUPPORT NOTE) */}
       <ContextualModals
         creatorsOpen={creatorsOpen}
         supportOpen={supportOpen}
@@ -130,12 +157,13 @@ export function App() {
         onCloseSupport={() => setSupportOpen(false)}
       />
 
-      {/* 6. OPENING CURTAIN THRESHOLD EXPERIENCE */}
+      {/* 7. OPENING CURTAIN THRESHOLD EXPERIENCE */}
       <CurtainIntro
         isOpen={isCurtainOpen}
         onOpen={() => {
           setIsCurtainOpen(true);
-          // Gently start playing on curtain entrance
+        }}
+        onStartPlayback={() => {
           setIsPlaying(true);
         }}
       />

@@ -54,7 +54,9 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     setIsDragging(true);
     const newTime = calculateTimeFromEvent(e.clientX);
     setDragTime(newTime);
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -75,7 +77,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       setIsDragging(false);
       onSeekCommit(finalTime);
       try {
-        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        e.currentTarget.releasePointerCapture(e.pointerId);
       } catch {}
     }
   };

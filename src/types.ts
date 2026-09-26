@@ -25,21 +25,24 @@ export interface Track {
   title: string;
   artist: string;
   raga?: string;
+  taal?: string;
   gharana?: string;
+  album?: string;
   film?: string;
-  year?: string;
+  year?: number | string;
   duration?: string;
-  videoId: string;
-  playlistId: PlaylistId;
+  instrument?: string;
+  tradition?: 'Hindustani' | 'Carnatic' | 'Dhrupad';
+  playlistId?: PlaylistId;
   notes?: string;
-  normalizationGain?: number;
+  youtubeUrl: string;
 }
 
 export interface RaagInfo {
   name: string;
-  timeOfDay: string;
-  thaat: string;
-  mood: string;
+  timeOfDay?: string;
+  thaat?: string;
+  mood?: string;
   tracks: string[]; // Track IDs
 }
 

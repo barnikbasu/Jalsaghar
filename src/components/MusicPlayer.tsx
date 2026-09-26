@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Track, PlaylistId, RepeatMode, PlaybackState } from '../types';
-import { YouTubePlayer } from './YouTubePlayer';
-import { GainController } from '../lib/audio/GainController';
+import { YouTubePlayer, YouTubePlayerRef } from './YouTubePlayer';
 import { ProgressBar } from './player/ProgressBar';
 import { VolumeControl } from './player/VolumeControl';
 import { UpNextPanel } from './player/UpNextPanel';
 import { RaagIndexModal } from './player/RaagIndexModal';
+import { extractYouTubeVideoId } from '../lib/youtube';
 import { trackEvent } from '../lib/analytics';
 import {
   Play,
@@ -16,56 +16,86 @@ import {
   Repeat,
   Repeat1,
   BookOpen,
-  Maximize2,
-  Minimize2,
+  ListMusic,
   Loader2,
   Heart,
   Music2,
 } from 'lucide-react';
 
+const STORAGE_KEY_VOLUME = 'jalsaghar_user_volume';
+const STORAGE_KEY_MUTED = 'jalsaghar_is_muted';
+const STORAGE_KEY_LIKED = 'jalsaghar_liked_tracks';
+
 interface MusicPlayerProps {
   currentTrack: Track;
   isPlaying: boolean;
   onTogglePlay: () => void;
+  onPlayChange?: (playing: boolean) => void;
   onNext: () => void;
   onPrevious: () => void;
   onTrackSelect: (track: Track) => void;
   allTracks: Track[];
   currentPlaylist: PlaylistId;
   onPlaylistChange: (playlist: PlaylistId) => void;
+  onOpenRaagIndex?: () => void;
+  isRaagIndexOpen?: boolean;
 }
 
 export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   currentTrack,
   isPlaying,
   onTogglePlay,
+  onPlayChange,
   onNext,
   onPrevious,
   onTrackSelect,
   allTracks,
   currentPlaylist,
   onPlaylistChange,
+  onOpenRaagIndex,
+  isRaagIndexOpen = false,
 }) => {
-  // Audio state
+  // Direct imperative ref to YouTube IFrame API instance
+  const youtubeRef = useRef<YouTubePlayerRef | null>(null);
+
+  // Playback & telemetry state
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
   const [bufferedFraction, setBufferedFraction] = useState<number>(0);
-  const [seekTarget, setSeekTarget] = useState<number | null>(null);
   const [isBuffering, setIsBuffering] = useState<boolean>(false);
-  const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
+  const [, setPlaybackState] = useState<PlaybackState>('idle');
 
-  // Controls state
+  // Interactive controls state
   const [isShuffle, setIsShuffle] = useState<boolean>(false);
   const [repeatMode, setRepeatMode] = useState<RepeatMode>('all');
   const [showQueue, setShowQueue] = useState<boolean>(false);
   const [showRaagIndex, setShowRaagIndex] = useState<boolean>(false);
-  const [isVideoExpanded, setIsVideoExpanded] = useState<boolean>(false);
   const [imgError, setImgError] = useState<boolean>(false);
+
+  // Volume & Mute state with persistence
+  const [userVolume, setUserVolume] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_VOLUME);
+      if (saved !== null) {
+        const parsed = parseFloat(saved);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) return parsed;
+      }
+    } catch {}
+    return 80;
+  });
+
+  const [isMuted, setIsMuted] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_MUTED) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // Liked tracks local storage
   const [likedTrackIds, setLikedTrackIds] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('jalsaghar_liked_tracks');
+      const saved = localStorage.getItem(STORAGE_KEY_LIKED);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -85,84 +115,82 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
         trackEvent('track_liked', { title: currentTrack.title });
       }
       try {
-        localStorage.setItem('jalsaghar_liked_tracks', JSON.stringify(updated));
+        localStorage.setItem(STORAGE_KEY_LIKED, JSON.stringify(updated));
       } catch {}
       return updated;
     });
   }, [currentTrack]);
 
-  // Gain & Volume controller
-  const gainControllerRef = useRef<GainController | null>(null);
-  const [effectiveVolume, setEffectiveVolume] = useState<number>(80);
-  const [userVolume, setUserVolume] = useState<number>(80);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
-
-  // Initialize GainController once
-  useEffect(() => {
-    const controller = new GainController((effective) => {
-      setEffectiveVolume(effective);
-    });
-    gainControllerRef.current = controller;
-    setUserVolume(controller.getUserVolume());
-    setIsMuted(controller.getIsMuted());
-    setEffectiveVolume(controller.getEffectiveVolume());
-
-    return () => {
-      controller.destroy();
-    };
-  }, []);
-
-  // Reset img error on track change
+  // Reset img error and timestamps on track change
   useEffect(() => {
     setImgError(false);
+    setCurrentTime(0);
   }, [currentTrack.id]);
 
-  // Update track normalization gain on track switch
-  useEffect(() => {
-    if (gainControllerRef.current) {
-      gainControllerRef.current.setNormalizationGain(currentTrack.normalizationGain || 1.0);
-    }
-  }, [currentTrack]);
-
-  // Handle Play/Pause with smooth fade envelope
-  const handlePlayPause = useCallback(async () => {
-    const controller = gainControllerRef.current;
+  // DIRECT Play/Pause handler invoked within trusted user gesture
+  const handlePlayPause = useCallback(() => {
     if (isPlaying) {
-      if (controller) {
-        await controller.fadeOut(380);
-      }
-      onTogglePlay();
+      youtubeRef.current?.pauseVideo();
     } else {
-      onTogglePlay();
-      if (controller) {
-        controller.fadeIn(450);
-      }
+      youtubeRef.current?.playVideo();
     }
-  }, [isPlaying, onTogglePlay]);
+  }, [isPlaying]);
+
+  // Sync external play triggers (e.g. curtain open or parent state)
+  useEffect(() => {
+    if (isPlaying) {
+      youtubeRef.current?.playVideo();
+    }
+  }, [isPlaying]);
+
+  // Handle play state change notified directly by YouTube engine
+  const handlePlayStateChange = useCallback(
+    (playing: boolean) => {
+      if (onPlayChange) {
+        onPlayChange(playing);
+      } else if (playing !== isPlaying) {
+        onTogglePlay();
+      }
+      setPlaybackState(playing ? 'playing' : 'paused');
+    },
+    [isPlaying, onPlayChange, onTogglePlay]
+  );
 
   // Volume slider handler
-  const handleVolumeChange = useCallback((newVol: number) => {
-    if (gainControllerRef.current) {
-      gainControllerRef.current.setUserVolume(newVol);
-      setUserVolume(gainControllerRef.current.getUserVolume());
-      setIsMuted(gainControllerRef.current.getIsMuted());
-    }
-  }, []);
+  const handleVolumeChange = useCallback(
+    (newVol: number) => {
+      const clamped = Math.max(0, Math.min(100, Math.round(newVol)));
+      setUserVolume(clamped);
+      youtubeRef.current?.setVolume(clamped);
+      if (clamped > 0 && isMuted) {
+        setIsMuted(false);
+        youtubeRef.current?.setMuted(false);
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY_VOLUME, clamped.toString());
+        localStorage.setItem(STORAGE_KEY_MUTED, 'false');
+      } catch {}
+    },
+    [isMuted]
+  );
 
-  // Toggle mute handler with memory
+  // Toggle mute handler
   const handleToggleMute = useCallback(() => {
-    if (gainControllerRef.current) {
-      const muted = gainControllerRef.current.toggleMute();
-      setIsMuted(muted);
-      setUserVolume(gainControllerRef.current.getUserVolume());
-      trackEvent(muted ? 'player_muted' : 'player_unmuted');
-    }
+    setIsMuted((prev) => {
+      const next = !prev;
+      youtubeRef.current?.setMuted(next);
+      try {
+        localStorage.setItem(STORAGE_KEY_MUTED, next.toString());
+      } catch {}
+      trackEvent(next ? 'player_muted' : 'player_unmuted');
+      return next;
+    });
   }, []);
 
   // Previous button logic: if currentTime > 3.5s, restart current track; else go to previous track
   const handlePreviousAction = useCallback(() => {
     if (currentTime > 3.5) {
-      setSeekTarget(0);
+      youtubeRef.current?.seekTo(0);
       setCurrentTime(0);
       trackEvent('track_restarted_from_prev', { title: currentTrack.title });
     } else {
@@ -181,10 +209,11 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     }
   }, [isShuffle, allTracks, currentTrack, onTrackSelect, onNext]);
 
-  // Handle Track Completion
+  // Handle Track Completion based on RepeatMode
   const handleTrackEnded = useCallback(() => {
     if (repeatMode === 'one') {
-      setSeekTarget(0);
+      youtubeRef.current?.seekTo(0);
+      youtubeRef.current?.playVideo();
       setCurrentTime(0);
       trackEvent('track_repeat_one', { title: currentTrack.title });
     } else if (repeatMode === 'all') {
@@ -194,10 +223,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
       if (currentIndex < allTracks.length - 1) {
         handleNextAction();
       } else {
-        if (isPlaying) onTogglePlay();
+        youtubeRef.current?.pauseVideo();
       }
     }
-  }, [repeatMode, currentTrack, handleNextAction, allTracks, isPlaying, onTogglePlay]);
+  }, [repeatMode, currentTrack, handleNextAction, allTracks]);
 
   // Cycle repeat modes: off -> all -> one -> off
   const cycleRepeatMode = () => {
@@ -218,26 +247,41 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   }, [duration]);
 
   // YouTube error handling
-  const handleError = useCallback((code: number) => {
-    console.warn('YouTube Player error code:', code);
+  const handleError = useCallback((code: number, msg?: string) => {
+    console.warn(`YouTube Player error (${code}):`, msg);
     setPlaybackState('error');
-    setTimeout(() => {
-      onNext();
-    }, 2400);
-  }, [onNext]);
+  }, []);
 
   // Seek commit from ProgressBar
   const handleSeekCommit = useCallback((targetTime: number) => {
-    setSeekTarget(targetTime);
+    youtubeRef.current?.seekTo(targetTime);
     setCurrentTime(targetTime);
     trackEvent('player_seeked', { targetTime });
   }, []);
 
+  // Open Archival Index Handler
+  const handleOpenIndex = useCallback(() => {
+    if (onOpenRaagIndex) {
+      onOpenRaagIndex();
+    } else {
+      setShowRaagIndex(true);
+    }
+  }, [onOpenRaagIndex]);
+
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // If Archival Index is open, do not handle player shortcuts
+      if (isRaagIndexOpen || showRaagIndex) {
+        return;
+      }
+
       const activeTag = document.activeElement?.tagName.toLowerCase();
-      if (activeTag === 'input' || activeTag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable) {
+      if (
+        activeTag === 'input' ||
+        activeTag === 'textarea' ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
         return;
       }
 
@@ -272,14 +316,31 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
       } else if (e.key === 'l' || e.key === 'L') {
         e.preventDefault();
         toggleLike();
+      } else if (e.key === 'q' || e.key === 'Q') {
+        e.preventDefault();
+        setShowQueue((prev) => !prev);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePlayPause, currentTime, duration, userVolume, handleSeekCommit, handleVolumeChange, handleToggleMute, handleNextAction, handlePreviousAction, toggleLike]);
+  }, [
+    handlePlayPause,
+    currentTime,
+    duration,
+    userVolume,
+    handleSeekCommit,
+    handleVolumeChange,
+    handleToggleMute,
+    handleNextAction,
+    handlePreviousAction,
+    toggleLike,
+  ]);
 
-  const trackArtworkUrl = `https://img.youtube.com/vi/${currentTrack.videoId}/hqdefault.jpg`;
+  const currentVideoId = extractYouTubeVideoId(currentTrack.youtubeUrl);
+  const trackArtworkUrl = currentVideoId
+    ? `https://img.youtube.com/vi/${currentVideoId}/hqdefault.jpg`
+    : '';
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-40 p-3 sm:p-5 flex flex-col items-center pointer-events-none select-none safe-pb">
@@ -290,106 +351,72 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
           allTracks={allTracks}
           currentPlaylist={currentPlaylist}
           onPlaylistChange={onPlaylistChange}
-          onTrackSelect={onTrackSelect}
+          onTrackSelect={(track) => {
+            onTrackSelect(track);
+            setShowQueue(false);
+          }}
           onClose={() => setShowQueue(false)}
         />
       )}
 
-      {/* 2. RAAG INDEX MODAL */}
-      <RaagIndexModal
-        isOpen={showRaagIndex}
-        onClose={() => setShowRaagIndex(false)}
-        onSelectTrack={onTrackSelect}
-        currentTrackId={currentTrack.id}
-      />
-
-      {/* 3. FLOATING PIP VIDEO CONTAINER (WHEN EXPANDED) */}
-      <div
-        className={`pointer-events-auto transition-all duration-300 ${
-          isVideoExpanded
-            ? 'fixed bottom-28 right-6 w-80 h-48 shadow-[0_20px_50px_rgba(0,0,0,0.95)] z-50 rounded-2xl overflow-hidden border border-white/20 bg-black'
-            : 'absolute w-0.5 h-0.5 opacity-0 overflow-hidden pointer-events-none'
-        }`}
-      >
-        <YouTubePlayer
-          videoId={currentTrack.videoId}
-          isPlaying={isPlaying}
-          volume={effectiveVolume}
-          isMuted={isMuted}
-          onPlayStateChange={(playing) => {
-            if (playing !== isPlaying) onTogglePlay();
+      {/* 2. RAAG INDEX MODAL (Only when not controlled by App root) */}
+      {!onOpenRaagIndex && (
+        <RaagIndexModal
+          isOpen={showRaagIndex}
+          onClose={() => setShowRaagIndex(false)}
+          onSelectTrack={(track) => {
+            onTrackSelect(track);
+            setShowRaagIndex(false);
           }}
+          currentTrackId={currentTrack.id}
+        />
+      )}
+
+      {/* 3. UNOBTRUSIVE COMPLIANT YOUTUBE VIEWPORT (Away from artwork center, no native controls, compliant minimum 200x113) */}
+      <div
+        id="jalsaghar-video-viewport"
+        className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-30 pointer-events-auto flex flex-col items-end group"
+      >
+        {/* Subtle archival monitor badge */}
+        <div className="flex items-center gap-1.5 px-2 py-0.5 mb-1 bg-black/80 backdrop-blur-md rounded-md border border-amber-900/30 text-[9px] font-serif tracking-widest text-amber-200/70 select-none shadow-sm">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          <span>ARCHIVAL RECORDING FEED</span>
+        </div>
+
+        <YouTubePlayer
+          ref={youtubeRef}
+          youtubeUrl={currentTrack.youtubeUrl}
+          volume={userVolume}
+          isMuted={isMuted}
+          onPlayStateChange={handlePlayStateChange}
           onBufferingChange={(buf) => setIsBuffering(buf)}
           onEnded={handleTrackEnded}
           onError={handleError}
           onProgress={handleProgress}
-          seekToTimestamp={seekTarget}
-          onSeekHandled={() => setSeekTarget(null)}
-          className="w-full h-full"
         />
-
-        {isVideoExpanded && (
-          <button
-            onClick={() => setIsVideoExpanded(false)}
-            className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/80 text-white/90 hover:text-white hover:bg-black transition-colors z-20 cursor-pointer shadow-md"
-            title="Minimize Video"
-            aria-label="Minimize Video"
-          >
-            <Minimize2 className="w-4 h-4" />
-          </button>
-        )}
       </div>
 
-      {/* Non-expanded DOM Player instance to maintain seamless continuous playback */}
-      {!isVideoExpanded && (
-        <div className="absolute w-0.5 h-0.5 opacity-0 overflow-hidden pointer-events-none">
-          <YouTubePlayer
-            videoId={currentTrack.videoId}
-            isPlaying={isPlaying}
-            volume={effectiveVolume}
-            isMuted={isMuted}
-            onPlayStateChange={(playing) => {
-              if (playing !== isPlaying) onTogglePlay();
-            }}
-            onBufferingChange={(buf) => setIsBuffering(buf)}
-            onEnded={handleTrackEnded}
-            onError={handleError}
-            onProgress={handleProgress}
-            seekToTimestamp={seekTarget}
-            onSeekHandled={() => setSeekTarget(null)}
-            className="w-full h-full"
-          />
-        </div>
-      )}
-
-      {/* 4. MAIN MUSIC PLAYER BAR DOCK */}
+      {/* 4. MAIN MUSIC PLAYER BAR DOCK (DESKTOP) */}
       <div
         id="desktop-music-player"
         className="hidden md:grid grid-cols-[1.1fr_1.8fr_1.1fr] items-center w-full max-w-5xl px-6 py-3.5 rounded-2xl bg-[#0c0d10]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.85)] pointer-events-auto text-white transition-all gap-4"
       >
         {/* ================= ZONE 1: TRACK ARTWORK & METADATA ================= */}
         <div className="flex items-center gap-3.5 min-w-0">
-          {/* Track Artwork / Video Thumbnail */}
-          <div
-            onClick={() => setIsVideoExpanded(!isVideoExpanded)}
-            className="relative w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shadow-md shrink-0 group cursor-pointer"
-            title={isVideoExpanded ? 'Minimize video' : 'Click to watch performance'}
-          >
-            {!imgError ? (
+          {/* Track Artwork / Thumbnail */}
+          <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shadow-md shrink-0">
+            {trackArtworkUrl && !imgError ? (
               <img
                 src={trackArtworkUrl}
                 alt={currentTrack.title}
                 onError={() => setImgError(true)}
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                className="w-full h-full object-cover"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-400">
+              <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-amber-200/60">
                 <Music2 className="w-5 h-5" />
               </div>
             )}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Maximize2 className="w-4 h-4 text-white" />
-            </div>
           </div>
 
           {/* Title & Artist hierarchy */}
@@ -449,23 +476,23 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               aria-label="Previous track (P)"
               title="Previous (P)"
             >
-              <SkipBack className="w-4 h-4 fill-current" />
+              <SkipBack className="w-5 h-5 fill-current" />
             </button>
 
-            {/* Play / Pause Pill */}
+            {/* Play / Pause button */}
             <button
               onClick={handlePlayPause}
-              id="desktop-play-pause-btn"
-              className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer outline-none"
-              aria-label={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+              id="desktop-play-btn"
+              className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer outline-none"
+              aria-label={isPlaying ? 'Pause playback (Space)' : 'Start playback (Space)'}
               title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
             >
               {isBuffering ? (
-                <Loader2 className="w-4.5 h-4.5 animate-spin text-black" />
+                <Loader2 className="w-5 h-5 animate-spin text-black" />
               ) : isPlaying ? (
-                <Pause className="w-4.5 h-4.5 fill-black text-black" />
+                <Pause className="w-5 h-5 fill-black text-black" />
               ) : (
-                <Play className="w-4.5 h-4.5 fill-black text-black ml-0.5" />
+                <Play className="w-5 h-5 fill-black text-black ml-0.5" />
               )}
             </button>
 
@@ -477,10 +504,10 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               aria-label="Next track (N)"
               title="Next (N)"
             >
-              <SkipForward className="w-4 h-4 fill-current" />
+              <SkipForward className="w-5 h-5 fill-current" />
             </button>
 
-            {/* Repeat */}
+            {/* Repeat Modes (Off -> All -> One) */}
             <button
               onClick={cycleRepeatMode}
               id="desktop-repeat-btn"
@@ -488,7 +515,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 repeatMode !== 'off' ? 'text-white' : 'text-zinc-400 hover:text-white'
               }`}
               title={`Repeat: ${repeatMode.toUpperCase()}`}
-              aria-label={`Repeat ${repeatMode}`}
+              aria-label={`Repeat: ${repeatMode}`}
             >
               {repeatMode === 'one' ? (
                 <Repeat1 className="w-4 h-4 text-white" />
@@ -508,7 +535,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
         </div>
 
         {/* ================= ZONE 3: UTILITY & RAAG INDEX ================= */}
-        <div className="flex items-center gap-4 justify-end shrink-0">
+        <div className="flex items-center gap-3 justify-end shrink-0">
           {/* Volume Control Slider */}
           <VolumeControl
             volume={userVolume}
@@ -517,11 +544,27 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
             onToggleMute={handleToggleMute}
           />
 
+          {/* Up Next / Repertoire Button */}
+          <button
+            onClick={() => setShowQueue(!showQueue)}
+            id="desktop-queue-btn"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold tracking-wider uppercase transition-all cursor-pointer shadow-sm active:scale-95 ${
+              showQueue
+                ? 'bg-amber-400/20 border-amber-400/50 text-amber-200'
+                : 'bg-white/5 hover:bg-white/10 border-white/15 hover:border-white/25 text-white/90 hover:text-white'
+            }`}
+            title="Up Next / Mehfil Repertoire (Q)"
+            aria-label="Up Next / Mehfil Repertoire"
+          >
+            <ListMusic className="w-3.5 h-3.5" />
+            <span>QUEUE</span>
+          </button>
+
           {/* INDEX Button */}
           <button
-            onClick={() => setShowRaagIndex(true)}
+            onClick={handleOpenIndex}
             id="desktop-raag-index-btn"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/25 text-white/90 hover:text-white text-xs font-semibold tracking-wider uppercase transition-all cursor-pointer shadow-sm active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/25 text-white/90 hover:text-white text-xs font-semibold tracking-wider uppercase transition-all cursor-pointer shadow-sm active:scale-95"
             title="Open Raag & Repertoire Index"
             aria-label="Open Raag & Repertoire Index"
           >
@@ -538,11 +581,8 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
       >
         {/* Top: Artwork, Titles, Heart & Index */}
         <div className="flex items-center gap-3 mb-3">
-          <div
-            onClick={() => setIsVideoExpanded(!isVideoExpanded)}
-            className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shrink-0 relative cursor-pointer"
-          >
-            {!imgError ? (
+          <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shrink-0 relative">
+            {trackArtworkUrl && !imgError ? (
               <img
                 src={trackArtworkUrl}
                 alt={currentTrack.title}
@@ -550,7 +590,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-400">
+              <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-amber-200/60">
                 <Music2 className="w-5 h-5" />
               </div>
             )}
@@ -579,8 +619,16 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
               />
             </button>
             <button
-              onClick={() => setShowRaagIndex(true)}
-              className="px-2.5 py-1 rounded-md bg-white/5 border border-white/15 text-[11px] font-medium uppercase tracking-wider text-white"
+              onClick={() => setShowQueue(!showQueue)}
+              className="p-1.5 rounded-md bg-white/5 border border-white/15 text-white"
+              aria-label="Queue"
+              title="Queue"
+            >
+              <ListMusic className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleOpenIndex}
+              className="px-2 py-1 rounded-md bg-white/5 border border-white/15 text-[10px] font-medium uppercase tracking-wider text-white"
               aria-label="Index"
             >
               INDEX
@@ -658,4 +706,3 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
     </div>
   );
 };
-

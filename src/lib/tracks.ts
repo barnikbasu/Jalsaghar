@@ -5,263 +5,241 @@ export const EXTERNAL_LINKS = {
   spotify: 'https://open.spotify.com/playlist/1zVKSwcN1UDYBXsBWQlp16?si=-F4hxElZQqiGYqkdMnrgfg&nd=1&dlsi=9058ad3b40b24163',
 };
 
+/**
+ * INITIAL JALSAGHAR RECORDING CATALOGUE
+ * Curated Hindustani Classical Recitals and Baithak Recordings.
+ * Single source of truth: youtubeUrl
+ */
 export const TRACK_CATALOG: Track[] = [
-  // ==================== BAITHAK (Intimate Instrumental & Vocal Masters) ====================
+  // TRACK 01
   {
-    id: 'b1',
-    title: 'Raag Yaman',
+    id: 'maru-bihag-ajoy-chakraborty',
+    title: 'Raag Maru Bihag',
+    artist: 'Pt. Ajoy Chakraborty',
+    raga: 'Maru Bihag',
+    youtubeUrl: 'https://youtu.be/cTZVhluhuXo?si=ZZ5-okWkJKKApnI0',
+    playlistId: 'baithak',
+  },
+  // TRACK 02
+  {
+    id: 'behag-rashid-khan',
+    title: 'Raga Behag',
     artist: 'Ustad Rashid Khan',
-    raga: 'Raag Yaman',
-    gharana: 'Rampur-Sahaswan Gharana',
-    duration: '16:30',
-    videoId: '9eB3p1Z0vQ0',
+    raga: 'Behag',
+    youtubeUrl: 'https://youtu.be/9yKmsoFiHWc?si=crZMyKKj2Veo2Cow',
     playlistId: 'baithak',
-    notes: 'Sublime voice culture breathing pure evening tranquility into Yaman.',
-    normalizationGain: 1.0,
   },
+  // TRACK 03
   {
-    id: 'b2',
-    title: 'Raga Bhairavi (Live Baithak)',
-    artist: 'Ustad Bismillah Khan',
-    raga: 'Raga Bhairavi',
-    gharana: 'Banaras Gharana',
-    duration: '15:20',
-    videoId: 'qC8e1f0L_bE',
+    id: 'jhinjhoti-nikhil-banerjee',
+    title: 'Raga Jhinjhoti',
+    artist: 'Pt. Nikhil Banerjee',
+    raga: 'Jhinjhoti',
+    youtubeUrl: 'https://youtu.be/Oq1RdHuPDSo?si=Krk-ReG1Fj6Uzfe8',
     playlistId: 'baithak',
-    notes: 'Legendary shehnai recital imbued with soulful Banarasi thumri nuances.',
-    normalizationGain: 0.98,
   },
+  // TRACK 04
   {
-    id: 'b3',
-    title: 'Raga Malkauns (Live in Kolkata)',
-    artist: 'Pandit Nikhil Banerjee',
-    raga: 'Raga Malkauns',
-    gharana: 'Maihar Gharana',
-    duration: '22:45',
-    videoId: 'mD2a4gH-a88',
+    id: 'yaman-vilayat-khan',
+    title: 'Raga Yaman',
+    artist: 'Ustad Vilayat Khan',
+    raga: 'Yaman',
+    youtubeUrl: 'https://youtu.be/tGBKs7swowk?si=wmAvZe-QzWm12pS1',
     playlistId: 'baithak',
-    notes: 'Deeply spiritual sitar alaap and gat celebrating nocturnal silence.',
-    normalizationGain: 1.0,
   },
+  // TRACK 05
   {
-    id: 'b4',
-    title: 'Raga Bhimpalasi (Vilambit & Drut Khayal)',
-    artist: 'Pandit Bhimsen Joshi',
-    raga: 'Raga Bhimpalasi',
-    gharana: 'Kirana Gharana',
-    duration: '24:30',
-    videoId: 'h8Lw-s0M8tA',
-    playlistId: 'baithak',
-    notes: 'Majestic afternoon khayal resonating with devotional fervor.',
-    normalizationGain: 0.95,
-  },
-  {
-    id: 'b5',
-    title: 'Raga Pilu (Acoustic Sarod Baithak)',
+    id: 'kafi-ali-akbar-khan',
+    title: 'Raag Kafi',
     artist: 'Ustad Ali Akbar Khan',
-    raga: 'Raga Pilu',
-    gharana: 'Maihar Gharana',
-    duration: '19:40',
-    videoId: 'Oa_0x9wG-qY',
+    raga: 'Kafi',
+    youtubeUrl: 'https://youtu.be/_swvClUvudM?si=O9iiVw2FcLFKtmA1',
     playlistId: 'baithak',
-    notes: 'Hauntingly emotive sarod melodies woven across vintage rugs.',
-    normalizationGain: 1.0,
   },
+  // TRACK 06
   {
-    id: 'b6',
-    title: 'Bageshree (Evening Mehfil)',
-    artist: 'Pandit Hariprasad Chaurasia',
-    raga: 'Raga Bageshri',
-    gharana: 'Maihar Gharana',
-    duration: '21:15',
-    videoId: 'u_1BwP4a2_o',
+    id: 'manj-khamaj-ravi-shankar-ali-akbar-khan',
+    title: 'Raag Manj Khamaj',
+    artist: 'Ravi Shankar & Ali Akbar Khan',
+    raga: 'Manj Khamaj',
+    youtubeUrl: 'https://youtu.be/R0rt4wBMoes?si=MsJtPAkCEz9zaaJ',
+    playlistId: 'riyaz',
+  },
+  // TRACK 07
+  {
+    id: 'yaman-kalyan-rajan-sajan-mishra',
+    title: 'Yaman Kalyan',
+    artist: 'Pt. Rajan-Sajan Mishra',
+    raga: 'Yaman Kalyan',
+    youtubeUrl: 'https://youtu.be/D_VEnj0znMk?si=BjM-y1ccAeq8u9lJ',
+    playlistId: 'riyaz',
+  },
+  // TRACK 08
+  {
+    id: 'rashid-khan-ajoy-chakraborty',
+    title: 'Ustad Rashid Khan & Pt. Ajoy Chakraborty',
+    artist: 'Ustad Rashid Khan & Pt. Ajoy Chakraborty',
+    youtubeUrl: 'https://youtu.be/PjXjsEbt4dw?si=Ni-cK4eOXGgAFHJc',
     playlistId: 'baithak',
-    notes: 'Soothing bamboo flute evoking the gentle yearning of midnight.',
-    normalizationGain: 0.98,
   },
-
-  // ==================== RIYAZ (Contemplative Morning & Long-Form Alaap) ====================
+  // TRACK 09
   {
-    id: 'r1',
-    title: 'Raga Ahir Bhairav (Morning Santoor)',
-    artist: 'Pandit Shivkumar Sharma',
-    raga: 'Raga Ahir Bhairav',
-    gharana: 'Kashmir Tradition',
-    duration: '26:50',
-    videoId: '4pE3v0G7b8Q',
-    playlistId: 'riyaz',
-    notes: 'Crystal clear acoustic raindrops awakening the morning dawn.',
-    normalizationGain: 1.0,
-  },
-  {
-    id: 'r2',
-    title: 'Raga Todi (Detailed Sitar Alaap & Jod)',
-    artist: 'Ustad Shahid Parvez',
-    raga: 'Raga Todi',
-    gharana: 'Etawah / Imdadkhani',
-    duration: '31:20',
-    videoId: 'kE6d9yV_a7A',
-    playlistId: 'riyaz',
-    notes: 'Austerity and profound introspection in the classical morning canon.',
-    normalizationGain: 0.96,
-  },
-  {
-    id: 'r3',
-    title: 'Raga Darbari Kanada (Rudra Veena Alaap)',
-    artist: 'Ustad Asad Ali Khan',
-    raga: 'Raga Darbari Kanada',
-    gharana: 'Khandarbani Dhrupad',
-    duration: '28:10',
-    videoId: '0gQ_u5Vq9o8',
-    playlistId: 'riyaz',
-    notes: 'Ancient microtonal andolans on the majestic Rudra Veena.',
-    normalizationGain: 1.0,
-  },
-  {
-    id: 'r4',
-    title: 'Raga Bhoopali (Vilambit Ektaal Khayal)',
-    artist: 'Vidushi Kishori Amonkar',
-    raga: 'Raga Bhoopali',
-    gharana: 'Jaipur-Atrauli Gharana',
-    duration: '27:40',
-    videoId: '2pW8m9_bXp0',
-    playlistId: 'riyaz',
-    notes: 'Luminous vocal expression exploring emotional bhakti.',
-    normalizationGain: 0.97,
-  },
-
-  // ==================== MEHFIL (Nocturnal Gatherings & Thumri) ====================
-  {
-    id: 'm1',
-    title: 'Ras Ke Bhare Tore Nain (Thumri)',
-    artist: 'Girija Devi',
-    raga: 'Mishra Bhairavi',
-    gharana: 'Banaras Gharana',
-    duration: '09:20',
-    videoId: 'f9N2q4bZ_8w',
+    id: 'bihag-ali-akbar-khan-vilayat-khan',
+    title: 'Raga Bihag',
+    artist: 'Ustad Ali Akbar Khan & Ustad Vilayat Khan',
+    raga: 'Bihag',
+    youtubeUrl: 'https://youtu.be/_P9j0fjn0XU?si=M8jFYW_6Zdqh34c7',
     playlistId: 'mehfil',
-    notes: 'Sensuous and tender Poorab Ang thumri by the Appaji of Banaras.',
-    normalizationGain: 0.95,
   },
+  // TRACK 10
   {
-    id: 'm2',
-    title: 'Deewana Banana Hai To Deewana Bana De',
-    artist: 'Begum Akhtar',
-    raga: 'Dadra / Ghazal',
-    gharana: 'Lucknow / Patiala',
-    duration: '06:45',
-    videoId: 'e9K3pW1yZ8E',
+    id: 'yaman-kalyan-bhimsen-joshi',
+    title: 'Raag Yaman Kalyan',
+    artist: 'Pt. Bhimsen Joshi',
+    raga: 'Yaman Kalyan',
+    youtubeUrl: 'https://youtu.be/xH-5Z_IMnmc?si=j44yFNm_bjZ9SOov',
     playlistId: 'mehfil',
-    notes: 'The immortal Mallika-e-Ghazal capturing the fragrance of courtly baithaks.',
-    normalizationGain: 0.95,
   },
+  // TRACK 11
   {
-    id: 'm3',
-    title: 'Yaad Piya Ki Aaye (Thumri)',
-    artist: 'Ustad Bade Ghulam Ali Khan',
-    raga: 'Thumri in Bhinna Shadja',
-    gharana: 'Patiala Gharana',
-    duration: '07:55',
-    videoId: '1qP3a4oX_Y0',
+    id: 'bihag-bade-ghulam-ali-khan-munawar-ali-khan',
+    title: 'Raag Bihag',
+    artist: 'Ustad Bade Ghulam Ali Khan & Ustad Munawar Ali Khan',
+    raga: 'Bihag',
+    youtubeUrl: 'https://youtu.be/5dE6goFUrAw?si=skwxc0yesGHhP2sJ',
     playlistId: 'mehfil',
-    notes: 'Unrivaled vocal ornamentations and nostalgic longing.',
-    normalizationGain: 0.96,
   },
+  // TRACK 12
   {
-    id: 'm4',
-    title: 'Raga Bihag (Midnight Mehfil Khayal)',
-    artist: 'Pandit Jasraj',
-    raga: 'Raga Bihag',
-    gharana: 'Mewati Gharana',
-    duration: '22:10',
-    videoId: 'k8N3v0m9L_A',
-    playlistId: 'mehfil',
-    notes: 'Silken romanticism in the heart of midnight.',
-    normalizationGain: 0.98,
+    id: 'bhimpalasi-ali-akbar-khan-nikhil-banerjee',
+    title: 'Raag Bhimpalasi',
+    artist: 'Ustad Ali Akbar Khan & Pt. Nikhil Banerjee',
+    raga: 'Bhimpalasi',
+    youtubeUrl: 'https://youtu.be/xh0LuGC7qO4?si=eXM5eTVAmYa56yfe',
+    playlistId: 'baithak',
+  },
+  // TRACK 13
+  {
+    id: 'desh-buddhadev-dasgupta-zakir-hussain',
+    title: 'Raga Desh',
+    artist: 'Pt. Buddhadev Dasgupta & Ustad Zakir Hussain',
+    raga: 'Desh',
+    youtubeUrl: 'https://music.youtube.com/watch?v=-M2qaC_CRdQ&si=bnIcW8mlRfUumqb4',
+    playlistId: 'baithak',
+  },
+  // TRACK 14
+  {
+    id: 'jhinjhoti-abir-hussain',
+    title: 'Raga Jhinjhoti',
+    artist: 'Abir Hussain',
+    raga: 'Jhinjhoti',
+    instrument: 'Sarod',
+    youtubeUrl: 'https://youtu.be/18JwAmSTsY8?si=KrIxbENyU1qgMyg2',
+    playlistId: 'riyaz',
   },
 ];
 
-export const RAAG_CATALOG: RaagInfo[] = [
-  {
-    name: 'Raag Yaman',
-    timeOfDay: 'First prahar of the night (Pratham Prahar)',
+/**
+ * Known classical raga context dictionary for generating rich archival notes
+ * without manual duplicate databases.
+ */
+const KNOWN_RAGA_ATTRIBUTES: Record<string, { timeOfDay: string; thaat: string; mood: string }> = {
+  yaman: {
+    timeOfDay: 'First prahar of the night (Evening twilight / 7 PM – 10 PM)',
     thaat: 'Kalyan',
-    mood: 'Devotional, peaceful, serene, romantic (Shringara & Shanta)',
-    tracks: ['b1'],
+    mood: 'Serenity, romantic devotion, divine tranquility, and evening grace',
   },
-  {
-    name: 'Raga Bhairavi',
-    timeOfDay: 'Early morning / Universal concluding raga',
-    thaat: 'Bhairavi',
-    mood: 'Compassion, yearning, pathos, poignant farewell (Karuna)',
-    tracks: ['b2', 'm1'],
-  },
-  {
-    name: 'Raga Malkauns',
-    timeOfDay: 'Deep midnight (Tritiya Prahar)',
-    thaat: 'Bhairavi',
-    mood: 'Profound solemnity, meditative calm, spiritual gravity',
-    tracks: ['b3'],
-  },
-  {
-    name: 'Raga Bhimpalasi',
-    timeOfDay: 'Late afternoon (Triteeya Prahar)',
-    thaat: 'Kafi',
-    mood: 'Passionate longing, tender devotion, melancholic beauty',
-    tracks: ['b4'],
-  },
-  {
-    name: 'Raga Pilu',
-    timeOfDay: 'Late afternoon to evening',
-    thaat: 'Kafi',
-    mood: 'Light classical, romantic charm, wistful thumri mood',
-    tracks: ['b5'],
-  },
-  {
-    name: 'Raga Bageshri',
-    timeOfDay: 'Midnight (Madhyaratri)',
-    thaat: 'Kafi',
-    mood: 'Romantic anticipation, sweet sorrow of separation (Viraha)',
-    tracks: ['b6'],
-  },
-  {
-    name: 'Raga Ahir Bhairav',
-    timeOfDay: 'Daybreak / Early morning (Pratham Prahar)',
-    thaat: 'Bhairav',
-    mood: 'Quiet contemplation, renewal, spiritual dawn (Bhakti)',
-    tracks: ['r1'],
-  },
-  {
-    name: 'Raga Todi',
-    timeOfDay: 'Late morning (Dvitiya Prahar)',
-    thaat: 'Todi',
-    mood: 'Profound pathos, austere asceticism, intense yearning',
-    tracks: ['r2'],
-  },
-  {
-    name: 'Raga Darbari Kanada',
-    timeOfDay: 'Midnight (Nisheeth)',
-    thaat: 'Asavari',
-    mood: 'Royal grandeur, nocturnal gravity, profound philosophical depth',
-    tracks: ['r3'],
-  },
-  {
-    name: 'Raga Bhoopali',
-    timeOfDay: 'First prahar of the night (Evening twilight)',
+  'yaman kalyan': {
+    timeOfDay: 'First prahar of the night (Evening twilight / 7 PM – 10 PM)',
     thaat: 'Kalyan',
-    mood: 'Joyful calm, innocence, serene majesty (Shanta & Veera)',
-    tracks: ['r4'],
+    mood: 'Expansive peace, nocturnal grandeur, solemn romantic majesty',
   },
-  {
-    name: 'Raga Bihag',
-    timeOfDay: 'Second prahar of the night (10 PM – Midnight)',
+  bihag: {
+    timeOfDay: 'Second prahar of the night (Late evening / 10 PM – Midnight)',
     thaat: 'Bilawal',
-    mood: 'Sensuous, gentle celebration, aristocratic midnight joy',
-    tracks: ['m4'],
+    mood: 'Sensuous nocturnal joy, gentle celebration, aristocratic yearning',
   },
-];
+  'maru bihag': {
+    timeOfDay: 'Late evening to midnight',
+    thaat: 'Kalyan',
+    mood: 'Tender contemplation, delicate romantic longing, poignant serenity',
+  },
+  jhinjhoti: {
+    timeOfDay: 'Late night (Second/third prahar)',
+    thaat: 'Khamaj',
+    mood: 'Soulful melody, romantic charm, wistful thumri mood and grace',
+  },
+  kafi: {
+    timeOfDay: 'Late night / Spring seasonal',
+    thaat: 'Kafi',
+    mood: 'Devotional joy, lively romantic expression, earthy sweetness',
+  },
+  'manj khamaj': {
+    timeOfDay: 'Late evening / Night',
+    thaat: 'Khamaj',
+    mood: 'Lyrical romanticism, playful melodic contours, intimate mehfil beauty',
+  },
+  bhimpalasi: {
+    timeOfDay: 'Late afternoon (Triteeya Prahar / 3 PM – 6 PM)',
+    thaat: 'Kafi',
+    mood: 'Passionate longing, tender devotion, melancholic afternoon beauty',
+  },
+  desh: {
+    timeOfDay: 'Second prahar of the night / Monsoon',
+    thaat: 'Khamaj',
+    mood: 'Evocative romanticism, nostalgic yearning, joyous monsoon sentiment',
+  },
+};
 
-export function getTracksByPlaylist(playlistId: PlaylistId): Track[] {
-  return TRACK_CATALOG.filter((t) => t.playlistId === playlistId);
+/**
+ * Dynamically derived Raag Catalog.
+ * Extracts unique ragas from the recording catalogue and groups track IDs automatically.
+ */
+export function buildRaagCatalog(tracks: Track[]): RaagInfo[] {
+  const ragaMap = new Map<string, { name: string; tracks: string[] }>();
+
+  tracks.forEach((track) => {
+    if (!track.raga) return;
+    const cleanRagaName = track.raga.trim();
+    // Normalize key for grouping: e.g. "Raga Yaman" -> "yaman", "Raag Bihag" -> "bihag"
+    const normalizedKey = cleanRagaName.toLowerCase().replace(/^(raag|raga)\s+/i, '').trim();
+
+    if (!ragaMap.has(normalizedKey)) {
+      ragaMap.set(normalizedKey, {
+        name: cleanRagaName.startsWith('Raag ') || cleanRagaName.startsWith('Raga ')
+          ? cleanRagaName
+          : `Raag ${cleanRagaName}`,
+        tracks: [],
+      });
+    }
+
+    ragaMap.get(normalizedKey)!.tracks.push(track.id);
+  });
+
+  const catalog: RaagInfo[] = [];
+
+  ragaMap.forEach((entry, key) => {
+    const known = KNOWN_RAGA_ATTRIBUTES[key] || {
+      timeOfDay: 'Classical Mehfil Hour',
+      thaat: 'Traditional',
+      mood: 'Immersive meditative baithak recital',
+    };
+
+    catalog.push({
+      name: entry.name,
+      timeOfDay: known.timeOfDay,
+      thaat: known.thaat,
+      mood: known.mood,
+      tracks: entry.tracks,
+    });
+  });
+
+  return catalog;
 }
 
+export const RAAG_CATALOG: RaagInfo[] = buildRaagCatalog(TRACK_CATALOG);
+
+export function getTracksByPlaylist(playlistId: PlaylistId): Track[] {
+  const matches = TRACK_CATALOG.filter((t) => t.playlistId === playlistId);
+  return matches.length > 0 ? matches : TRACK_CATALOG;
+}
