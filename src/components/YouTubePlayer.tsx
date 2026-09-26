@@ -16,8 +16,11 @@ declare global {
 }
 
 export interface YouTubePlayerRef {
+  play: () => void;
+  pause: () => void;
   playVideo: () => void;
   pauseVideo: () => void;
+  loadAndPlay: (videoId: string, requestId?: number) => void;
   seekTo: (seconds: number) => void;
   setVolume: (volume: number) => void;
   setMuted: (isMuted: boolean) => void;
@@ -30,6 +33,8 @@ interface YouTubePlayerProps {
   youtubeUrl: string;
   volume: number; // 0 - 100
   isMuted: boolean;
+  isPlaying?: boolean;
+  onPlayerReady?: () => void;
   onPlayStateChange: (isPlaying: boolean) => void;
   onBufferingChange?: (isBuffering: boolean) => void;
   onEnded: () => void;
@@ -44,6 +49,8 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
       youtubeUrl,
       volume,
       isMuted,
+      isPlaying,
+      onPlayerReady,
       onPlayStateChange,
       onBufferingChange,
       onEnded,
@@ -60,8 +67,13 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
     const isPlayerReadyRef = useRef<boolean>(false);
     const intendedPlayingRef = useRef<boolean>(false);
     const currentVideoIdRef = useRef<string>('');
+    const currentLoadedVideoIdRef = useRef<string>('');
+    const pendingVideoIdRef = useRef<string | null>(null);
+    const playRequestIdRef = useRef<number>(0);
+    const lastLoadedRequestIdRef = useRef<number>(0);
     const volumeRef = useRef<number>(volume);
     const isMutedRef = useRef<boolean>(isMuted);
+    const bufferingWatchdogRef = useRef<any>(null);
 
     const [isApiReady, setIsApiReady] = useState<boolean>(false);
     const [isPlayerReady, setIsPlayerReady] = useState<boolean>(false);
@@ -69,14 +81,34 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
     // Keep refs in sync with latest props
     volumeRef.current = volume;
     isMutedRef.current = isMuted;
+    if (isPlaying !== undefined) {
+      intendedPlayingRef.current = isPlaying;
+    }
 
     const videoId = extractYouTubeVideoId(youtubeUrl);
     currentVideoIdRef.current = videoId;
+
+    const clearWatchdog = () => {
+      if (bufferingWatchdogRef.current) {
+        clearTimeout(bufferingWatchdogRef.current);
+        bufferingWatchdogRef.current = null;
+      }
+    };
 
     // Expose direct imperative playback controls to the JALSAGHAR music player
     useImperativeHandle(
       ref,
       () => ({
+        play: () => {
+          intendedPlayingRef.current = true;
+          if (isPlayerReadyRef.current && playerRef.current) {
+            try {
+              playerRef.current.playVideo();
+            } catch (err) {
+              console.warn('Direct play error:', err);
+            }
+          }
+        },
         playVideo: () => {
           intendedPlayingRef.current = true;
           if (isPlayerReadyRef.current && playerRef.current) {
@@ -87,14 +119,56 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
             }
           }
         },
+        pause: () => {
+          intendedPlayingRef.current = false;
+          clearWatchdog();
+          if (isPlayerReadyRef.current && playerRef.current) {
+            try {
+              playerRef.current.pauseVideo();
+            } catch (err) {
+              console.warn('Direct pause error:', err);
+            }
+          }
+        },
         pauseVideo: () => {
           intendedPlayingRef.current = false;
+          clearWatchdog();
           if (isPlayerReadyRef.current && playerRef.current) {
             try {
               playerRef.current.pauseVideo();
             } catch (err) {
               console.warn('Direct pauseVideo error:', err);
             }
+          }
+        },
+        loadAndPlay: (vid: string, requestId?: number) => {
+          if (!vid) return;
+          const reqId = requestId ?? ++playRequestIdRef.current;
+          lastLoadedRequestIdRef.current = reqId;
+          intendedPlayingRef.current = true;
+          currentVideoIdRef.current = vid;
+          currentLoadedVideoIdRef.current = vid;
+          pendingVideoIdRef.current = null;
+          clearWatchdog();
+
+          if (isPlayerReadyRef.current && playerRef.current) {
+            try {
+              // Load video using official API method and command immediate playback
+              playerRef.current.loadVideoById({
+                videoId: vid,
+                startSeconds: 0,
+              });
+              playerRef.current.playVideo();
+            } catch {
+              try {
+                playerRef.current.loadVideoById(vid, 0);
+                playerRef.current.playVideo();
+              } catch (err) {
+                console.warn('Direct loadVideoById error:', err);
+              }
+            }
+          } else {
+            pendingVideoIdRef.current = vid;
           }
         },
         seekTo: (seconds: number) => {
@@ -184,10 +258,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
             ? window.location.origin
             : undefined;
 
+        currentLoadedVideoIdRef.current = initialVideoId;
+
         playerRef.current = new window.YT.Player(containerRef.current, {
           videoId: initialVideoId,
-          width: '200',
-          height: '113',
+          width: '100%',
+          height: '100%',
           playerVars: {
             autoplay: 0,
             controls: 0, // CRITICAL: Disable native YouTube controls so custom JALSAGHAR player is primary!
@@ -204,6 +280,9 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
             onReady: (event: any) => {
               isPlayerReadyRef.current = true;
               setIsPlayerReady(true);
+              if (onPlayerReady) {
+                onPlayerReady();
+              }
 
               // Apply initial volume & mute state
               try {
@@ -225,8 +304,26 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
                 }
               } catch {}
 
-              // Fulfill user's play intent if Play was clicked before onReady
-              if (intendedPlayingRef.current) {
+              // Fulfill user's play intent if a track was selected before onReady
+              if (pendingVideoIdRef.current) {
+                const toPlay = pendingVideoIdRef.current;
+                pendingVideoIdRef.current = null;
+                currentLoadedVideoIdRef.current = toPlay;
+                try {
+                  event.target.loadVideoById({
+                    videoId: toPlay,
+                    startSeconds: 0,
+                  });
+                  event.target.playVideo();
+                } catch {
+                  try {
+                    event.target.loadVideoById(toPlay, 0);
+                    event.target.playVideo();
+                  } catch (err) {
+                    console.warn('onReady loadVideoById error:', err);
+                  }
+                }
+              } else if (intendedPlayingRef.current) {
                 try {
                   event.target.playVideo();
                 } catch (err) {
@@ -249,27 +346,73 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
               } catch {}
 
               if (state === window.YT.PlayerState.PLAYING) {
+                clearWatchdog();
                 intendedPlayingRef.current = true;
                 onPlayStateChange(true);
                 if (onBufferingChange) onBufferingChange(false);
-              } else if (state === window.YT.PlayerState.PAUSED) {
-                intendedPlayingRef.current = false;
-                onPlayStateChange(false);
-                if (onBufferingChange) onBufferingChange(false);
               } else if (state === window.YT.PlayerState.BUFFERING) {
                 if (onBufferingChange) onBufferingChange(true);
+                if (intendedPlayingRef.current) {
+                  try {
+                    event.target.playVideo();
+                  } catch {}
+                  clearWatchdog();
+                  bufferingWatchdogRef.current = setTimeout(() => {
+                    if (intendedPlayingRef.current && playerRef.current) {
+                      try {
+                        const s = playerRef.current.getPlayerState?.();
+                        if (
+                          s === window.YT.PlayerState.BUFFERING ||
+                          s === window.YT.PlayerState.PAUSED ||
+                          s === window.YT.PlayerState.CUED
+                        ) {
+                          playerRef.current.playVideo();
+                        }
+                      } catch {}
+                    }
+                  }, 600);
+                }
+              } else if (state === window.YT.PlayerState.PAUSED) {
+                clearWatchdog();
+                // Critical: Only update UI to paused if the user did NOT request playback.
+                // During track transitions, YouTube often emits PAUSED for the previous video
+                // or while loading the next video.
+                if (!intendedPlayingRef.current) {
+                  onPlayStateChange(false);
+                  if (onBufferingChange) onBufferingChange(false);
+                } else {
+                  // Transient pause during track change - ensure playback starts
+                  try {
+                    event.target.playVideo();
+                  } catch {}
+                }
               } else if (state === window.YT.PlayerState.ENDED) {
+                clearWatchdog();
                 intendedPlayingRef.current = false;
                 onPlayStateChange(false);
                 if (onBufferingChange) onBufferingChange(false);
                 trackEvent('track_ended', { videoId: currentVideoIdRef.current });
                 onEnded();
               } else if (state === window.YT.PlayerState.CUED) {
+                clearWatchdog();
                 if (onBufferingChange) onBufferingChange(false);
+                if (intendedPlayingRef.current) {
+                  try {
+                    event.target.playVideo();
+                  } catch {}
+                }
               }
+            },
+            onAutoplayBlocked: () => {
+              console.warn('YouTube autoplay blocked by browser policy');
+              clearWatchdog();
+              intendedPlayingRef.current = false;
+              onPlayStateChange(false);
+              if (onBufferingChange) onBufferingChange(false);
             },
             onError: (event: any) => {
               const errorCode = event.data;
+              clearWatchdog();
               trackEvent('youtube_error', { errorCode, videoId: currentVideoIdRef.current });
               if (onBufferingChange) onBufferingChange(false);
 
@@ -291,6 +434,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
       }
 
       return () => {
+        clearWatchdog();
         if (playerRef.current && typeof playerRef.current.destroy === 'function') {
           try {
             playerRef.current.destroy();
@@ -301,20 +445,37 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
       };
     }, [isApiReady]);
 
-    // 3. Track transition without recreating or resetting the player instance
+    // 3. Fallback track transition if videoId changed from outside without loadAndPlay
     useEffect(() => {
       if (!isPlayerReadyRef.current || !playerRef.current || !videoId) return;
 
+      // If loadAndPlay has already loaded this video, do not re-load or cue it
+      if (currentLoadedVideoIdRef.current === videoId) return;
+      currentLoadedVideoIdRef.current = videoId;
+
       try {
-        if (intendedPlayingRef.current) {
-          playerRef.current.loadVideoById(videoId);
+        if (intendedPlayingRef.current || isPlaying) {
+          playerRef.current.loadVideoById({
+            videoId,
+            startSeconds: 0,
+          });
+          playerRef.current.playVideo();
         } else {
           playerRef.current.cueVideoById(videoId);
         }
-      } catch (err) {
-        console.warn('Error loading new video on track change:', err);
+      } catch {
+        try {
+          if (intendedPlayingRef.current || isPlaying) {
+            playerRef.current.loadVideoById(videoId, 0);
+            playerRef.current.playVideo();
+          } else {
+            playerRef.current.cueVideoById(videoId);
+          }
+        } catch (err) {
+          console.warn('Error loading new video on track change:', err);
+        }
       }
-    }, [videoId]);
+    }, [videoId, isPlaying]);
 
     // 4. Volume and mute synchronization
     useEffect(() => {
@@ -352,7 +513,9 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
 
     return (
       <div
-        className={`w-[200px] h-[113px] rounded-xl overflow-hidden shadow-2xl border border-amber-900/30 bg-black pointer-events-auto ${className}`}
+        className={`w-[200px] h-[113px] sm:w-[220px] sm:h-[124px] md:w-[200px] md:h-[113px] rounded-xl overflow-hidden shadow-2xl border border-amber-900/30 bg-black pointer-events-auto transition-[width,height] duration-200 ${className}`}
+        role="region"
+        aria-label="Archival Recording Window"
       >
         {/* Unobtrusive, 100% compliant, standard minimum 200x113 YouTube iframe container */}
         <div ref={containerRef} className="w-full h-full" />

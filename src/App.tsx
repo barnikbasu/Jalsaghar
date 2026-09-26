@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TimeOfDay, Track, PlaylistId } from './types';
 import { getCurrentTimeOfDay } from './lib/time';
 import { TRACK_CATALOG, getTracksByPlaylist } from './lib/tracks';
 import { ArtworkView } from './components/ArtworkView';
 import { Wordmark } from './components/Wordmark';
 import { TopBar } from './components/TopBar';
-import { MusicPlayer } from './components/MusicPlayer';
+import { MusicPlayer, MusicPlayerHandle } from './components/MusicPlayer';
 import { CurtainIntro } from './components/CurtainIntro';
 import { ContextualModals } from './components/ContextualModals';
 import { RaagIndexModal } from './components/player/RaagIndexModal';
@@ -14,6 +14,8 @@ import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
 export function App() {
+  const musicPlayerRef = useRef<MusicPlayerHandle | null>(null);
+
   // 1. Automatic Real-World Time-of-Day (Asia/Kolkata)
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(() => getCurrentTimeOfDay());
 
@@ -66,6 +68,11 @@ export function App() {
         title: currentTrack.title,
         artist: currentTrack.artist,
       });
+      if (next) {
+        musicPlayerRef.current?.playVideo();
+      } else {
+        musicPlayerRef.current?.pauseVideo();
+      }
       return next;
     });
   }, [currentTrack]);
@@ -82,25 +89,23 @@ export function App() {
   );
 
   const handleNext = useCallback(() => {
-    const currentIndex = playlistTracks.findIndex((t) => t.id === currentTrack.id);
-    const nextIndex = (currentIndex + 1) % playlistTracks.length;
-    const nextTrack = playlistTracks[nextIndex];
-    setCurrentTrack(nextTrack);
-    trackEvent('next_track', { title: nextTrack.title, artist: nextTrack.artist });
-  }, [playlistTracks, currentTrack]);
+    musicPlayerRef.current?.handleNext();
+  }, []);
 
   const handlePrevious = useCallback(() => {
-    const currentIndex = playlistTracks.findIndex((t) => t.id === currentTrack.id);
-    const prevIndex = (currentIndex - 1 + playlistTracks.length) % playlistTracks.length;
-    const prevTrack = playlistTracks[prevIndex];
-    setCurrentTrack(prevTrack);
-    trackEvent('prev_track', { title: prevTrack.title, artist: prevTrack.artist });
-  }, [playlistTracks, currentTrack]);
+    musicPlayerRef.current?.handlePrevious();
+  }, []);
 
-  const handleTrackSelect = (track: Track) => {
+  const handleTrackSelectFromPlayer = useCallback((track: Track) => {
     setCurrentTrack(track);
     setIsPlaying(true);
-  };
+  }, []);
+
+  const handleExplicitPlayTrack = useCallback((track: Track) => {
+    setCurrentTrack(track);
+    setIsPlaying(true);
+    musicPlayerRef.current?.playTrack(track);
+  }, []);
 
   return (
     <main className="relative w-screen h-screen overflow-hidden select-none bg-[#0a0607]">
@@ -124,13 +129,14 @@ export function App() {
 
       {/* 4. FLOATING MUSIC PLAYER (DESKTOP DOCK / MOBILE CARD WITH VISIBLE YOUTUBE) */}
       <MusicPlayer
+        ref={musicPlayerRef}
         currentTrack={currentTrack}
         isPlaying={isPlaying}
         onTogglePlay={handleTogglePlay}
         onPlayChange={handlePlayChange}
         onNext={handleNext}
         onPrevious={handlePrevious}
-        onTrackSelect={handleTrackSelect}
+        onTrackSelect={handleTrackSelectFromPlayer}
         allTracks={playlistTracks}
         currentPlaylist={currentPlaylist}
         onPlaylistChange={handlePlaylistChange}
@@ -143,7 +149,7 @@ export function App() {
         isOpen={isRaagIndexOpen}
         onClose={() => setIsRaagIndexOpen(false)}
         onSelectTrack={(track) => {
-          handleTrackSelect(track);
+          handleExplicitPlayTrack(track);
           setIsRaagIndexOpen(false);
         }}
         currentTrackId={currentTrack.id}
@@ -165,6 +171,7 @@ export function App() {
         }}
         onStartPlayback={() => {
           setIsPlaying(true);
+          musicPlayerRef.current?.playVideo();
         }}
       />
     </main>
