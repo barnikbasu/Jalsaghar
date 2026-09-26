@@ -129,7 +129,7 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
             {/* Avatar Container with Gold Gradient Ring */}
             <div className="relative w-24 h-24 sm:w-26 sm:h-26 rounded-full p-1 bg-gradient-to-br from-[#c5a880] via-[#c5a880]/30 to-transparent shadow-md mb-3.5">
               <img
-                src="/barnik.jpg"
+                src="/barnikbasu.png"
                 alt="Barnik Basu"
                 referrerPolicy="no-referrer"
                 className="w-full h-full rounded-full object-cover object-top border border-[#1a1b1f]"
