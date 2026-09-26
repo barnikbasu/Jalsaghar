@@ -206,7 +206,7 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* CHAI / SUPPORT CARD: "Buy us a chai" */}
+      {/* CHAI / SUPPORT CARD: "Buy me a chai" */}
       {/* ========================================================= */}
       {supportOpen && (
         <div
@@ -231,7 +231,7 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
               id="support-heading"
               className="font-poppins text-xl sm:text-2xl font-medium text-[#EAEAEA] tracking-tight"
             >
-              Buy us a chai
+              Buy me a chai
             </h2>
             <p
               id="support-subheading"
