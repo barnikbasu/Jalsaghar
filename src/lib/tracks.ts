@@ -1,7 +1,7 @@
 import { PlaylistId, Track, RaagInfo } from '../types';
 
 export const EXTERNAL_LINKS = {
-  youtubeMusic: 'https://music.youtube.com/playlist?list=PLJAiFJ6bGyew',
+  youtubeMusic: 'https://music.youtube.com/playlist?list=PLADmqUxNquMg',
   spotify: 'https://open.spotify.com/playlist/1zVKSwcN1UDYBXsBWQlp16?si=-F4hxElZQqiGYqkdMnrgfg&nd=1&dlsi=9058ad3b40b24163',
 };
 
