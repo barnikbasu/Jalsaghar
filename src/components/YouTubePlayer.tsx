@@ -649,11 +649,11 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
 
     return (
       <div
-        className={`relative w-[200px] h-[200px] rounded-xl overflow-hidden shadow-2xl border border-amber-900/30 bg-black pointer-events-auto transition-[width,height] duration-200 ${className}`}
+        className={`relative w-[200px] h-[113px] rounded-lg overflow-hidden shadow-2xl border border-amber-900/30 bg-black pointer-events-auto transition-[width,height] duration-200 ${className}`}
         role="region"
         aria-label="Archival Recording Window"
       >
-        {/* Compliant minimum 200x200 viewport to satisfy YouTube embedded player minimums */}
+        {/* Compliant minimum 200x113 (16:9) viewport to satisfy YouTube embedded player minimums */}
         <div ref={containerRef} className="w-full h-full" />
 
         {/* Optional overlay (e.g. graceful JALSAGHAR archival state) */}

@@ -684,15 +684,15 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
             {/* Tasteful JALSAGHAR Archival State when restricted / YouTube-only */}
             {errorInfo && (
               <div
-                className="absolute inset-0 bg-[#0d0a0b]/96 backdrop-blur-md flex flex-col justify-between p-3 z-20 text-center select-none"
+                className="absolute inset-0 bg-[#0d0a0b]/96 backdrop-blur-md flex flex-col justify-between p-2 z-20 text-center select-none"
                 role="alert"
                 aria-live="polite"
               >
-                <div className="flex items-center justify-between border-b border-white/[0.06] pb-1">
-                  <span className="text-[8px] font-serif tracking-widest uppercase text-amber-300/80">
+                <div className="flex items-center justify-between border-b border-white/[0.06] pb-0.5">
+                  <span className="text-[7.5px] font-serif tracking-widest uppercase text-amber-300/80">
                     JALSAGHAR
                   </span>
-                  <span className="text-[8px] font-mono tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200">
+                  <span className="text-[7.5px] font-mono tracking-wider px-1 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200">
                     {errorInfo.status === 'youtube-only'
                       ? 'YOUTUBE ONLY'
                       : errorInfo.status === 'config-error'
@@ -703,11 +703,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                   </span>
                 </div>
 
-                <div className="my-auto py-1">
-                  <h4 className="text-[10px] font-serif tracking-widest text-amber-200 font-medium uppercase mb-0.5">
+                <div className="my-auto py-0.5">
+                  <h4 className="text-[9px] font-serif tracking-widest text-amber-200 font-medium uppercase leading-tight">
                     {errorInfo.title}
                   </h4>
-                  <p className="text-[9px] text-zinc-300 leading-tight max-w-[170px] mx-auto font-sans">
+                  <p className="text-[8px] text-zinc-300 leading-tight max-w-[170px] mx-auto font-sans">
                     {errorInfo.submessage || errorInfo.message}
                   </p>
                 </div>
@@ -716,10 +716,10 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                   href={currentTrack.youtubeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 hover:border-amber-400/60 text-amber-100 hover:text-white text-[10px] font-medium tracking-wide transition-all shadow-sm active:scale-98"
+                  className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 hover:border-amber-400/60 text-amber-100 hover:text-white text-[8.5px] font-medium tracking-wide transition-all shadow-sm active:scale-98"
                 >
                   <span>Listen on YouTube</span>
-                  <span className="text-[10px]">↗</span>
+                  <span className="text-[8.5px]">↗</span>
                 </a>
               </div>
             )}
