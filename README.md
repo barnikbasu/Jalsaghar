@@ -595,10 +595,10 @@ External media destinations take the user to their respective services rather th
 ### External Music Links
 
 YouTube Music:
-<a href="https://music.youtube.com/playlist?list=PLJAiFJ6bGyew">YouTube Music Playlist</a>
+<a href="https://music.youtube.com/playlist?list=PLADmqUxNquMg&si=q0EfI8kpXyPBfULX">YouTube Music Playlist</a>
 
 Spotify:
-<a href="https://open.spotify.com/playlist/1zVKSwcN1UDYBXsBWQlp16?si=-F4hxElZQqiGYqkdMnrgfg&nd=1&dlsi=9058ad3b40b24163">Spotify Playlist</a>
+<a href="https://open.spotify.com/playlist/5v8AL0bXouWWTtiEjWAJb5?si=gConKLI8SW6w-kzwP8GIPg">Spotify Playlist</a>
 
 ### Made with Bhalobasha
 
@@ -1438,9 +1438,9 @@ And the music continues.
 &nbsp;·&nbsp;
 <a href="https://github.com/barnikbasu/jalsaghar">GitHub Repository</a>
 &nbsp;·&nbsp;
-<a href="https://music.youtube.com/playlist?list=PLJAiFJ6bGyew">YouTube Music</a>
+<a href="https://music.youtube.com/playlist?list=PLADmqUxNquMg&si=q0EfI8kpXyPBfULX">YouTube Music</a>
 &nbsp;·&nbsp;
-<a href="https://open.spotify.com/playlist/1zVKSwcN1UDYBXsBWQlp16?si=-F4hxElZQqiGYqkdMnrgfg&nd=1&dlsi=9058ad3b40b24163">Spotify</a>
+<a href="https://open.spotify.com/playlist/5v8AL0bXouWWTtiEjWAJb5?si=gConKLI8SW6w-kzwP8GIPg">Spotify</a>
 
 </p>
 
