@@ -6,7 +6,7 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from 'react';
-import { Track, PlaylistId, RepeatMode, PlaybackState } from '../types';
+import { Track, PlaylistId, RepeatMode, PlaybackState, PlaybackStatus, PlaybackErrorInfo } from '../types';
 import { YouTubePlayer, YouTubePlayerRef } from './YouTubePlayer';
 import { ProgressBar } from './player/ProgressBar';
 import { VolumeControl } from './player/VolumeControl';
@@ -39,6 +39,7 @@ export interface MusicPlayerHandle {
   pauseVideo: () => void;
   handleNext: () => void;
   handlePrevious: () => void;
+  getCurrentRequestId?: () => number;
 }
 
 interface MusicPlayerProps {
@@ -90,7 +91,8 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     const [duration, setDuration] = useState<number>(0);
     const [bufferedFraction, setBufferedFraction] = useState<number>(0);
     const [isBuffering, setIsBuffering] = useState<boolean>(false);
-    const [, setPlaybackState] = useState<PlaybackState>('idle');
+    const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>('idle');
+    const [errorInfo, setErrorInfo] = useState<PlaybackErrorInfo | null>(null);
 
     // Interactive controls state
     const [isShuffle, setIsShuffle] = useState<boolean>(false);
@@ -164,6 +166,17 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
 
     // DIRECT Play/Pause handler invoked within trusted user gesture
     const handlePlayPause = useCallback(() => {
+      // If the current track has an active embed restriction, do not issue repeated load/play commands to YouTube.
+      // Instead, gracefully open the direct recording destination on YouTube in a new tab.
+      if (
+        playbackStatus === 'youtube-only' ||
+        playbackStatus === 'config-error' ||
+        playbackStatus === 'unavailable'
+      ) {
+        window.open(currentTrack.youtubeUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
       if (isPlaying) {
         intendedPlayingRef.current = false;
         youtubeRef.current?.pause();
@@ -171,17 +184,37 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         intendedPlayingRef.current = true;
         youtubeRef.current?.play();
       }
-    }, [isPlaying]);
+    }, [isPlaying, playbackStatus, currentTrack.youtubeUrl]);
 
     // Handle play state change notified directly by YouTube engine
     const handlePlayStateChange = useCallback(
-      (playing: boolean) => {
+      (playing: boolean, requestId?: number) => {
+        // Monotonic generation check: discard callbacks from older requests (protects A -> B -> A)
+        if (requestId !== undefined && requestId !== playRequestIdRef.current) {
+          console.log(
+            `[JALSAGHAR] Discarding play state change from stale request ${requestId} (active is ${playRequestIdRef.current})`
+          );
+          return;
+        }
+
         if (onPlayChange) {
           onPlayChange(playing);
         } else if (playing !== isPlaying) {
           onTogglePlay();
         }
-        setPlaybackState(playing ? 'playing' : 'paused');
+        if (playing) {
+          setPlaybackStatus('playing');
+          setErrorInfo(null);
+        } else {
+          setPlaybackStatus((prev) =>
+            prev === 'youtube-only' ||
+            prev === 'config-error' ||
+            prev === 'unavailable' ||
+            prev === 'error'
+              ? prev
+              : 'paused'
+          );
+        }
       },
       [isPlaying, onPlayChange, onTogglePlay]
     );
@@ -212,6 +245,8 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
 
         // Visual UI synchronization
         setCurrentTime(0);
+        setErrorInfo(null);
+        setPlaybackStatus('loading');
         onTrackSelect(track);
 
         if (!playerReadyRef.current) {
@@ -310,29 +345,35 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     }, [isShuffle, allTracks, currentTrack, playTrack]);
 
     // Handle Track Completion based on RepeatMode
-    const handleTrackEnded = useCallback(() => {
-      if (repeatMode === 'one') {
-        const currentIdx =
-          currentTrackIndexRef.current >= 0
-            ? currentTrackIndexRef.current
-            : allTracks.findIndex((t) => t.id === currentTrack.id);
-        playTrack(currentIdx);
-        trackEvent('track_repeat_one', { title: currentTrack.title });
-      } else if (repeatMode === 'all') {
-        handleNextAction();
-      } else {
-        const currentIdx =
-          currentTrackIndexRef.current >= 0
-            ? currentTrackIndexRef.current
-            : allTracks.findIndex((t) => t.id === currentTrack.id);
-        if (currentIdx < allTracks.length - 1) {
+    const handleTrackEnded = useCallback(
+      (requestId?: number) => {
+        if (requestId !== undefined && requestId !== playRequestIdRef.current) {
+          return;
+        }
+        if (repeatMode === 'one') {
+          const currentIdx =
+            currentTrackIndexRef.current >= 0
+              ? currentTrackIndexRef.current
+              : allTracks.findIndex((t) => t.id === currentTrack.id);
+          playTrack(currentIdx);
+          trackEvent('track_repeat_one', { title: currentTrack.title });
+        } else if (repeatMode === 'all') {
           handleNextAction();
         } else {
-          intendedPlayingRef.current = false;
-          youtubeRef.current?.pause();
+          const currentIdx =
+            currentTrackIndexRef.current >= 0
+              ? currentTrackIndexRef.current
+              : allTracks.findIndex((t) => t.id === currentTrack.id);
+          if (currentIdx < allTracks.length - 1) {
+            handleNextAction();
+          } else {
+            intendedPlayingRef.current = false;
+            youtubeRef.current?.pause();
+          }
         }
-      }
-    }, [repeatMode, currentTrack, allTracks, handleNextAction, playTrack]);
+      },
+      [repeatMode, currentTrack, allTracks, handleNextAction, playTrack]
+    );
 
     // Cycle repeat modes: off -> all -> one -> off
     const cycleRepeatMode = () => {
@@ -358,24 +399,116 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         },
         handleNext: handleNextAction,
         handlePrevious: handlePreviousAction,
+        getCurrentRequestId: () => playRequestIdRef.current,
       }),
       [playTrack, handleNextAction, handlePreviousAction]
     );
 
     // YouTube progress update
-    const handleProgress = useCallback((curr: number, total: number, loadedFraction: number) => {
-      setCurrentTime(curr);
-      if (total > 0 && duration !== total) {
-        setDuration(total);
-      }
-      setBufferedFraction(loadedFraction);
-    }, [duration]);
+    const handleProgress = useCallback(
+      (curr: number, total: number, loadedFraction: number, requestId?: number) => {
+        if (requestId !== undefined && requestId !== playRequestIdRef.current) {
+          return;
+        }
+        setCurrentTime(curr);
+        if (total > 0 && duration !== total) {
+          setDuration(total);
+        }
+        setBufferedFraction(loadedFraction);
+      },
+      [duration]
+    );
 
     // YouTube error handling
-    const handleError = useCallback((code: number, msg?: string) => {
-      console.warn(`YouTube Player error (${code}):`, msg);
-      setPlaybackState('error');
-    }, []);
+    const handleError = useCallback(
+      (
+        code: number,
+        msg: string,
+        errorType: 'youtube-only' | 'config-error' | 'unavailable' | 'error',
+        requestId?: number
+      ) => {
+        // Monotonic generation check: discard errors from older requests (protects A -> B -> A)
+        if (requestId !== undefined && requestId !== playRequestIdRef.current) {
+          console.log(
+            `[JALSAGHAR] Discarding error from stale request ${requestId} (active is ${playRequestIdRef.current})`
+          );
+          return;
+        }
+
+        console.warn(`[JALSAGHAR] YouTube Player error (${code}):`, msg);
+
+        let title = 'PLAYBACK ERROR';
+        let submessage = "This recording can't be played inside JALSAGHAR.";
+
+        if (errorType === 'youtube-only') {
+          title = 'AVAILABLE ON YOUTUBE';
+          submessage = "This recording can't be played inside JALSAGHAR.";
+        } else if (errorType === 'config-error') {
+          title = 'YOUTUBE EMBED CONFIGURATION ERROR (153)';
+          submessage = 'Embedder identity or Referer verification failed.';
+        } else if (errorType === 'unavailable') {
+          title = 'RECORDING UNAVAILABLE (100)';
+          submessage = 'This video was removed or marked private on YouTube.';
+        } else if (code === 5) {
+          title = 'HTML5 PLAYER ERROR (5)';
+          submessage = 'The HTML5 browser player encountered an error.';
+        } else if (code === 2) {
+          title = 'INVALID RECORDING PARAMETER (2)';
+          submessage = 'Invalid video parameter.';
+        }
+
+        setPlaybackStatus(errorType);
+        setErrorInfo({
+          code,
+          status: errorType,
+          title,
+          message: msg,
+          submessage,
+          youtubeUrl: currentTrack.youtubeUrl,
+          videoId: currentVideoIdRef.current,
+        });
+
+        if (onPlayChange) {
+          onPlayChange(false);
+        }
+      },
+      [currentTrack.youtubeUrl, onPlayChange]
+    );
+
+    // YouTube autoplay blocked by browser policy
+    const handleAutoplayBlocked = useCallback(
+      (requestId?: number) => {
+        if (requestId !== undefined && requestId !== playRequestIdRef.current) {
+          return;
+        }
+        setPlaybackStatus('autoplay-blocked');
+        if (onPlayChange) {
+          onPlayChange(false);
+        }
+      },
+      [onPlayChange]
+    );
+
+    // YouTube buffering state change
+    const handleBufferingChange = useCallback(
+      (buffering: boolean, requestId?: number) => {
+        if (requestId !== undefined && requestId !== playRequestIdRef.current) {
+          return;
+        }
+        setIsBuffering(buffering);
+        if (buffering) {
+          setPlaybackStatus((prev) =>
+            prev === 'youtube-only' ||
+            prev === 'config-error' ||
+            prev === 'unavailable' ||
+            prev === 'error'
+              ? prev
+              : 'buffering'
+          );
+        }
+      },
+      []
+    );
 
     // Seek commit from ProgressBar
     const handleSeekCommit = useCallback((targetTime: number) => {
@@ -505,25 +638,92 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
           className="fixed z-30 pointer-events-auto transition-all duration-300 ease-out top-16 left-1/2 -translate-x-1/2 flex flex-col items-center landscape:max-md:top-auto landscape:max-md:bottom-3 landscape:max-md:right-4 landscape:max-md:left-auto landscape:max-md:translate-x-0 landscape:max-md:items-end portrait:md:top-20 portrait:md:left-1/2 portrait:md:-translate-x-1/2 portrait:md:items-center portrait:md:bottom-auto portrait:md:right-auto landscape:md:top-auto landscape:md:bottom-6 landscape:md:right-6 landscape:md:left-auto landscape:md:translate-x-0 landscape:md:items-end lg:top-auto lg:bottom-6 lg:right-6 lg:left-auto lg:translate-x-0 lg:items-end"
           aria-label="Archival Recording Video Window"
         >
-          {/* Subtle archival monitor badge on desktop only (no extra video cards or headers on mobile/tablet) */}
-          <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 mb-1 bg-black/80 backdrop-blur-md rounded-md border border-amber-900/30 text-[9px] font-serif tracking-widest text-amber-200/70 select-none shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span>ARCHIVAL RECORDING FEED</span>
-          </div>
+          {/* Subtle archival monitor badge on desktop only */}
+          {errorInfo ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 mb-1.5 bg-[#140c0f]/95 backdrop-blur-md rounded-md border border-amber-900/40 text-[10px] font-sans tracking-wide text-amber-200 select-none shadow-md">
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  errorInfo.status === 'youtube-only' ? 'bg-amber-400' : 'bg-rose-400'
+                }`}
+              />
+              <span className="font-serif tracking-widest text-[9px] uppercase">
+                {errorInfo.title}
+              </span>
+              <a
+                href={currentTrack.youtubeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-1 text-amber-300 hover:text-white underline font-medium"
+              >
+                Listen on YouTube ↗
+              </a>
+            </div>
+          ) : (
+            <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 mb-1 bg-black/80 backdrop-blur-md rounded-md border border-amber-900/30 text-[9px] font-serif tracking-widest text-amber-200/70 select-none shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span>ARCHIVAL RECORDING FEED</span>
+            </div>
+          )}
 
           <YouTubePlayer
             ref={youtubeRef}
             youtubeUrl={currentTrack.youtubeUrl}
+            trackTitle={currentTrack.title}
+            trackArtist={currentTrack.artist}
             volume={userVolume}
             isMuted={isMuted}
             isPlaying={isPlaying}
             onPlayerReady={handlePlayerReady}
             onPlayStateChange={handlePlayStateChange}
-            onBufferingChange={(buf) => setIsBuffering(buf)}
+            onBufferingChange={handleBufferingChange}
             onEnded={handleTrackEnded}
             onError={handleError}
+            onAutoplayBlocked={handleAutoplayBlocked}
             onProgress={handleProgress}
-          />
+          >
+            {/* Tasteful JALSAGHAR Archival State when restricted / YouTube-only */}
+            {errorInfo && (
+              <div
+                className="absolute inset-0 bg-[#0d0a0b]/96 backdrop-blur-md flex flex-col justify-between p-3 z-20 text-center select-none"
+                role="alert"
+                aria-live="polite"
+              >
+                <div className="flex items-center justify-between border-b border-white/[0.06] pb-1">
+                  <span className="text-[8px] font-serif tracking-widest uppercase text-amber-300/80">
+                    JALSAGHAR
+                  </span>
+                  <span className="text-[8px] font-mono tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200">
+                    {errorInfo.status === 'youtube-only'
+                      ? 'YOUTUBE ONLY'
+                      : errorInfo.status === 'config-error'
+                      ? 'CONFIG (153)'
+                      : errorInfo.status === 'unavailable'
+                      ? 'UNAVAILABLE'
+                      : `ERR ${errorInfo.code}`}
+                  </span>
+                </div>
+
+                <div className="my-auto py-1">
+                  <h4 className="text-[10px] font-serif tracking-widest text-amber-200 font-medium uppercase mb-0.5">
+                    {errorInfo.title}
+                  </h4>
+                  <p className="text-[9px] text-zinc-300 leading-tight max-w-[170px] mx-auto font-sans">
+                    {errorInfo.submessage || errorInfo.message}
+                  </p>
+                </div>
+
+                <a
+                  href={currentTrack.youtubeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 hover:border-amber-400/60 text-amber-100 hover:text-white text-[10px] font-medium tracking-wide transition-all shadow-sm active:scale-98"
+                >
+                  <span>Listen on YouTube</span>
+                  <span className="text-[10px]">↗</span>
+                </a>
+              </div>
+            )}
+          </YouTubePlayer>
         </div>
 
         {/* 4. MAIN MUSIC PLAYER BAR DOCK (DESKTOP) */}
@@ -558,6 +758,28 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                 {currentTrack.raga ? `${currentTrack.raga} · ` : ''}
                 {currentTrack.artist}
               </p>
+              {errorInfo && (
+                <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
+                  <span className="text-amber-300 font-serif tracking-wider uppercase font-medium">
+                    {errorInfo.status === 'youtube-only'
+                      ? 'Available on YouTube'
+                      : errorInfo.status === 'config-error'
+                      ? 'Config Error (153)'
+                      : errorInfo.status === 'unavailable'
+                      ? 'Unavailable (100)'
+                      : 'Playback Error'}
+                  </span>
+                  <span className="text-zinc-600">·</span>
+                  <a
+                    href={currentTrack.youtubeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-200/90 hover:text-white underline underline-offset-2 flex items-center gap-0.5"
+                  >
+                    <span>Listen ↗</span>
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* Like / Heart Action */}
@@ -614,8 +836,24 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                 onClick={handlePlayPause}
                 id="desktop-play-btn"
                 className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer outline-none"
-                aria-label={isPlaying ? 'Pause playback (Space)' : 'Start playback (Space)'}
-                title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+                aria-label={
+                  errorInfo?.status === 'youtube-only'
+                    ? 'Available on YouTube (Open in new tab)'
+                    : errorInfo?.status === 'config-error'
+                    ? 'Embed Configuration Error (Open on YouTube)'
+                    : isPlaying
+                    ? 'Pause playback (Space)'
+                    : 'Start playback (Space)'
+                }
+                title={
+                  errorInfo?.status === 'youtube-only'
+                    ? 'Available on YouTube (Open in new tab)'
+                    : errorInfo?.status === 'config-error'
+                    ? 'Embed Configuration Error (Open on YouTube)'
+                    : isPlaying
+                    ? 'Pause (Space)'
+                    : 'Play (Space)'
+                }
               >
                 {isBuffering ? (
                   <Loader2 className="w-5 h-5 animate-spin text-black" />
@@ -734,6 +972,28 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                 {currentTrack.raga ? `${currentTrack.raga} · ` : ''}
                 {currentTrack.artist}
               </p>
+              {errorInfo && (
+                <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
+                  <span className="text-amber-300 font-serif tracking-wider uppercase font-medium">
+                    {errorInfo.status === 'youtube-only'
+                      ? 'Available on YouTube'
+                      : errorInfo.status === 'config-error'
+                      ? 'Config Error (153)'
+                      : errorInfo.status === 'unavailable'
+                      ? 'Unavailable (100)'
+                      : 'Playback Error'}
+                  </span>
+                  <span className="text-zinc-600">·</span>
+                  <a
+                    href={currentTrack.youtubeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-200/90 hover:text-white underline underline-offset-2"
+                  >
+                    Listen ↗
+                  </a>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-1">
@@ -799,7 +1059,20 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
             <button
               onClick={handlePlayPause}
               className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-md active:scale-95"
-              aria-label={isPlaying ? 'Pause' : 'Play'}
+              aria-label={
+                errorInfo?.status === 'youtube-only'
+                  ? 'Available on YouTube'
+                  : isPlaying
+                  ? 'Pause'
+                  : 'Play'
+              }
+              title={
+                errorInfo?.status === 'youtube-only'
+                  ? 'Available on YouTube'
+                  : isPlaying
+                  ? 'Pause'
+                  : 'Play'
+              }
             >
               {isBuffering ? (
                 <Loader2 className="w-4.5 h-4.5 animate-spin text-black" />

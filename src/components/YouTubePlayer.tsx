@@ -27,26 +27,43 @@ export interface YouTubePlayerRef {
   isReady: () => boolean;
   getCurrentTime: () => number;
   getDuration: () => number;
+  getActiveRequestId: () => number;
 }
 
 interface YouTubePlayerProps {
   youtubeUrl: string;
+  trackTitle?: string;
+  trackArtist?: string;
   volume: number; // 0 - 100
   isMuted: boolean;
   isPlaying?: boolean;
   onPlayerReady?: () => void;
-  onPlayStateChange: (isPlaying: boolean) => void;
-  onBufferingChange?: (isBuffering: boolean) => void;
-  onEnded: () => void;
-  onError?: (errorCode: number, message?: string) => void;
-  onProgress: (currentTime: number, duration: number, bufferedFraction: number) => void;
+  onPlayStateChange: (isPlaying: boolean, requestId?: number) => void;
+  onBufferingChange?: (isBuffering: boolean, requestId?: number) => void;
+  onEnded: (requestId?: number) => void;
+  onError?: (
+    errorCode: number,
+    message: string,
+    errorType: 'youtube-only' | 'config-error' | 'unavailable' | 'error',
+    requestId?: number
+  ) => void;
+  onAutoplayBlocked?: (requestId?: number) => void;
+  onProgress: (
+    currentTime: number,
+    duration: number,
+    bufferedFraction: number,
+    requestId?: number
+  ) => void;
   className?: string;
+  children?: React.ReactNode;
 }
 
 export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
   (
     {
       youtubeUrl,
+      trackTitle,
+      trackArtist,
       volume,
       isMuted,
       isPlaying,
@@ -55,8 +72,10 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
       onBufferingChange,
       onEnded,
       onError,
+      onAutoplayBlocked,
       onProgress,
       className = '',
+      children,
     },
     ref
   ) => {
@@ -66,14 +85,15 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
     // Track initialization, readiness, and user intent
     const isPlayerReadyRef = useRef<boolean>(false);
     const intendedPlayingRef = useRef<boolean>(false);
+    const isTransitioningRef = useRef<boolean>(false);
     const currentVideoIdRef = useRef<string>('');
     const currentLoadedVideoIdRef = useRef<string>('');
     const pendingVideoIdRef = useRef<string | null>(null);
     const playRequestIdRef = useRef<number>(0);
+    const activeRequestIdRef = useRef<number>(0);
     const lastLoadedRequestIdRef = useRef<number>(0);
     const volumeRef = useRef<number>(volume);
     const isMutedRef = useRef<boolean>(isMuted);
-    const bufferingWatchdogRef = useRef<any>(null);
 
     const [isApiReady, setIsApiReady] = useState<boolean>(false);
     const [isPlayerReady, setIsPlayerReady] = useState<boolean>(false);
@@ -88,84 +108,72 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
     const videoId = extractYouTubeVideoId(youtubeUrl);
     currentVideoIdRef.current = videoId;
 
-    const clearWatchdog = () => {
-      if (bufferingWatchdogRef.current) {
-        clearTimeout(bufferingWatchdogRef.current);
-        bufferingWatchdogRef.current = null;
-      }
-    };
-
     // Expose direct imperative playback controls to the JALSAGHAR music player
+    // NO timers, NO fake clicks, NO repeated playVideo(), NO retry loops
     useImperativeHandle(
       ref,
       () => ({
         play: () => {
           intendedPlayingRef.current = true;
+          isTransitioningRef.current = false;
           if (isPlayerReadyRef.current && playerRef.current) {
             try {
               playerRef.current.playVideo();
             } catch (err) {
-              console.warn('Direct play error:', err);
+              console.warn('[JALSAGHAR] Direct play error:', err);
             }
           }
         },
         playVideo: () => {
           intendedPlayingRef.current = true;
+          isTransitioningRef.current = false;
           if (isPlayerReadyRef.current && playerRef.current) {
             try {
               playerRef.current.playVideo();
             } catch (err) {
-              console.warn('Direct playVideo error:', err);
+              console.warn('[JALSAGHAR] Direct playVideo error:', err);
             }
           }
         },
         pause: () => {
           intendedPlayingRef.current = false;
-          clearWatchdog();
+          isTransitioningRef.current = false;
           if (isPlayerReadyRef.current && playerRef.current) {
             try {
               playerRef.current.pauseVideo();
             } catch (err) {
-              console.warn('Direct pause error:', err);
+              console.warn('[JALSAGHAR] Direct pause error:', err);
             }
           }
         },
         pauseVideo: () => {
           intendedPlayingRef.current = false;
-          clearWatchdog();
+          isTransitioningRef.current = false;
           if (isPlayerReadyRef.current && playerRef.current) {
             try {
               playerRef.current.pauseVideo();
             } catch (err) {
-              console.warn('Direct pauseVideo error:', err);
+              console.warn('[JALSAGHAR] Direct pauseVideo error:', err);
             }
           }
         },
         loadAndPlay: (vid: string, requestId?: number) => {
           if (!vid) return;
           const reqId = requestId ?? ++playRequestIdRef.current;
+          activeRequestIdRef.current = reqId;
           lastLoadedRequestIdRef.current = reqId;
           intendedPlayingRef.current = true;
+          isTransitioningRef.current = true;
           currentVideoIdRef.current = vid;
           currentLoadedVideoIdRef.current = vid;
           pendingVideoIdRef.current = null;
-          clearWatchdog();
 
           if (isPlayerReadyRef.current && playerRef.current) {
             try {
-              // Load video using official API method and command immediate playback
-              playerRef.current.loadVideoById({
-                videoId: vid,
-                startSeconds: 0,
-              });
-              playerRef.current.playVideo();
-            } catch {
-              try {
-                playerRef.current.loadVideoById(vid, 0);
-                playerRef.current.playVideo();
-              } catch (err) {
-                console.warn('Direct loadVideoById error:', err);
-              }
+              // Direct canonical loadVideoById without retry loops or masked hacks
+              playerRef.current.loadVideoById(vid);
+            } catch (err) {
+              console.warn('[JALSAGHAR] Direct loadVideoById error:', err);
             }
           } else {
             pendingVideoIdRef.current = vid;
@@ -176,7 +184,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
             try {
               playerRef.current.seekTo(seconds, true);
             } catch (err) {
-              console.warn('Direct seekTo error:', err);
+              console.warn('[JALSAGHAR] Direct seekTo error:', err);
             }
           }
         },
@@ -216,6 +224,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
             return 0;
           }
         },
+        getActiveRequestId: () => activeRequestIdRef.current,
       }),
       []
     );
@@ -258,6 +267,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
             ? window.location.origin
             : undefined;
 
+        console.log('[JALSAGHAR] Initializing YouTube Player instance:', {
+          initialVideoId,
+          origin: window.location.origin,
+          originParam,
+        });
+
         currentLoadedVideoIdRef.current = initialVideoId;
 
         playerRef.current = new window.YT.Player(containerRef.current, {
@@ -280,6 +295,34 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
             onReady: (event: any) => {
               isPlayerReadyRef.current = true;
               setIsPlayerReady(true);
+
+              // Verify and log iframe element properties
+              try {
+                const iframe =
+                  event.target?.getIframe?.() as HTMLIFrameElement | null;
+                if (iframe) {
+                  const currentAllow = iframe.getAttribute('allow') || '';
+                  if (
+                    !currentAllow.includes('autoplay') ||
+                    !currentAllow.includes('encrypted-media')
+                  ) {
+                    iframe.setAttribute(
+                      'allow',
+                      'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
+                    );
+                  }
+                  console.log('[JALSAGHAR] YouTube iframe verified:', {
+                    src: iframe.src,
+                    allow: iframe.getAttribute('allow'),
+                    width: iframe.offsetWidth,
+                    height: iframe.offsetHeight,
+                    originParam,
+                  });
+                }
+              } catch (e) {
+                console.warn('[JALSAGHAR] Error inspecting iframe element:', e);
+              }
+
               if (onPlayerReady) {
                 onPlayerReady();
               }
@@ -310,24 +353,15 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
                 pendingVideoIdRef.current = null;
                 currentLoadedVideoIdRef.current = toPlay;
                 try {
-                  event.target.loadVideoById({
-                    videoId: toPlay,
-                    startSeconds: 0,
-                  });
-                  event.target.playVideo();
-                } catch {
-                  try {
-                    event.target.loadVideoById(toPlay, 0);
-                    event.target.playVideo();
-                  } catch (err) {
-                    console.warn('onReady loadVideoById error:', err);
-                  }
+                  event.target.loadVideoById(toPlay);
+                } catch (err) {
+                  console.warn('[JALSAGHAR] onReady loadVideoById error:', err);
                 }
               } else if (intendedPlayingRef.current) {
                 try {
                   event.target.playVideo();
                 } catch (err) {
-                  console.warn('onReady playVideo error:', err);
+                  console.warn('[JALSAGHAR] onReady playVideo error:', err);
                 }
               }
             },
@@ -335,106 +369,213 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
               if (!window.YT) return;
               const state = event.data;
 
-              // Immediately check duration and update progress
+              // Guard against stale asynchronous callbacks:
+              // 1. Generation check (protects A -> B -> A race conditions)
+              if (
+                event?.requestId !== undefined &&
+                event.requestId !== activeRequestIdRef.current
+              ) {
+                console.log(
+                  `[JALSAGHAR] Discarding stale YouTube state (${state}) from request ${event.requestId} (active is ${activeRequestIdRef.current})`
+                );
+                return;
+              }
+
+              // 2. Video ID check (protects against delayed events for previous different tracks)
+              const activeVideoId = event.target?.getVideoData?.()?.video_id;
+              if (
+                activeVideoId &&
+                currentVideoIdRef.current &&
+                activeVideoId !== currentVideoIdRef.current
+              ) {
+                console.log(
+                  `[JALSAGHAR] Discarding stale YouTube state (${state}) for video: ${activeVideoId} (active authoritative is ${currentVideoIdRef.current})`
+                );
+                return;
+              }
+
+              // Duration & progress inspection for current authoritative track
               try {
                 const total = event.target?.getDuration?.() || 0;
                 const curr = event.target?.getCurrentTime?.() || 0;
                 const loaded = event.target?.getVideoLoadedFraction?.() || 0;
                 if (total > 0) {
-                  onProgress(curr, total, loaded);
+                  onProgress(curr, total, loaded, activeRequestIdRef.current);
                 }
               } catch {}
 
               if (state === window.YT.PlayerState.PLAYING) {
-                clearWatchdog();
+                console.log(
+                  '[JALSAGHAR] YouTube State: PLAYING (1) for videoId:',
+                  currentVideoIdRef.current,
+                  'reqId:',
+                  activeRequestIdRef.current
+                );
+                isTransitioningRef.current = false;
                 intendedPlayingRef.current = true;
-                onPlayStateChange(true);
-                if (onBufferingChange) onBufferingChange(false);
+                onPlayStateChange(true, activeRequestIdRef.current);
+                if (onBufferingChange) onBufferingChange(false, activeRequestIdRef.current);
               } else if (state === window.YT.PlayerState.BUFFERING) {
-                if (onBufferingChange) onBufferingChange(true);
-                if (intendedPlayingRef.current) {
-                  try {
-                    event.target.playVideo();
-                  } catch {}
-                  clearWatchdog();
-                  bufferingWatchdogRef.current = setTimeout(() => {
-                    if (intendedPlayingRef.current && playerRef.current) {
-                      try {
-                        const s = playerRef.current.getPlayerState?.();
-                        if (
-                          s === window.YT.PlayerState.BUFFERING ||
-                          s === window.YT.PlayerState.PAUSED ||
-                          s === window.YT.PlayerState.CUED
-                        ) {
-                          playerRef.current.playVideo();
-                        }
-                      } catch {}
-                    }
-                  }, 600);
-                }
+                console.log(
+                  '[JALSAGHAR] YouTube State: BUFFERING (3) for videoId:',
+                  currentVideoIdRef.current,
+                  'reqId:',
+                  activeRequestIdRef.current
+                );
+                // Allow YouTube player to resolve buffering naturally. NO timers, NO watchdog retries.
+                if (onBufferingChange) onBufferingChange(true, activeRequestIdRef.current);
               } else if (state === window.YT.PlayerState.PAUSED) {
-                clearWatchdog();
-                // Critical: Only update UI to paused if the user did NOT request playback.
-                // During track transitions, YouTube often emits PAUSED for the previous video
-                // or while loading the next video.
-                if (!intendedPlayingRef.current) {
-                  onPlayStateChange(false);
-                  if (onBufferingChange) onBufferingChange(false);
-                } else {
-                  // Transient pause during track change - ensure playback starts
-                  try {
-                    event.target.playVideo();
-                  } catch {}
+                console.log(
+                  '[JALSAGHAR] YouTube State: PAUSED (2) for videoId:',
+                  currentVideoIdRef.current,
+                  'reqId:',
+                  activeRequestIdRef.current
+                );
+                // Distinguish genuine user pause from transient transition pause
+                if (!isTransitioningRef.current || !intendedPlayingRef.current) {
+                  intendedPlayingRef.current = false;
+                  onPlayStateChange(false, activeRequestIdRef.current);
                 }
+                if (onBufferingChange) onBufferingChange(false, activeRequestIdRef.current);
               } else if (state === window.YT.PlayerState.ENDED) {
-                clearWatchdog();
+                console.log(
+                  '[JALSAGHAR] YouTube State: ENDED (0) for videoId:',
+                  currentVideoIdRef.current,
+                  'reqId:',
+                  activeRequestIdRef.current
+                );
+                isTransitioningRef.current = false;
                 intendedPlayingRef.current = false;
-                onPlayStateChange(false);
-                if (onBufferingChange) onBufferingChange(false);
+                onPlayStateChange(false, activeRequestIdRef.current);
+                if (onBufferingChange) onBufferingChange(false, activeRequestIdRef.current);
                 trackEvent('track_ended', { videoId: currentVideoIdRef.current });
-                onEnded();
+                onEnded(activeRequestIdRef.current);
               } else if (state === window.YT.PlayerState.CUED) {
-                clearWatchdog();
-                if (onBufferingChange) onBufferingChange(false);
-                if (intendedPlayingRef.current) {
-                  try {
-                    event.target.playVideo();
-                  } catch {}
-                }
+                console.log(
+                  '[JALSAGHAR] YouTube State: CUED (5) for videoId:',
+                  currentVideoIdRef.current
+                );
+                if (onBufferingChange) onBufferingChange(false, activeRequestIdRef.current);
               }
             },
-            onAutoplayBlocked: () => {
-              console.warn('YouTube autoplay blocked by browser policy');
-              clearWatchdog();
+            onAutoplayBlocked: (event?: any) => {
+              if (
+                event?.requestId !== undefined &&
+                event.requestId !== activeRequestIdRef.current
+              ) {
+                return;
+              }
+              const activeVideoId =
+                playerRef.current?.getVideoData?.()?.video_id || currentVideoIdRef.current;
+              if (
+                activeVideoId &&
+                currentVideoIdRef.current &&
+                activeVideoId !== currentVideoIdRef.current
+              ) {
+                return;
+              }
+              console.warn(
+                '[JALSAGHAR] YouTube autoplay blocked by browser policy for videoId:',
+                currentVideoIdRef.current,
+                'reqId:',
+                activeRequestIdRef.current
+              );
+              isTransitioningRef.current = false;
               intendedPlayingRef.current = false;
-              onPlayStateChange(false);
-              if (onBufferingChange) onBufferingChange(false);
+              onPlayStateChange(false, activeRequestIdRef.current);
+              if (onBufferingChange) onBufferingChange(false, activeRequestIdRef.current);
+              if (onAutoplayBlocked) onAutoplayBlocked(activeRequestIdRef.current);
             },
             onError: (event: any) => {
               const errorCode = event.data;
-              clearWatchdog();
-              trackEvent('youtube_error', { errorCode, videoId: currentVideoIdRef.current });
-              if (onBufferingChange) onBufferingChange(false);
 
-              let msg = 'Playback restricted for this archival recording.';
-              if (errorCode === 101 || errorCode === 150) {
-                msg = 'Embedding restricted by publisher. Please use Next or Previous to continue.';
-              } else if (errorCode === 2) {
-                msg = 'Invalid recording identifier.';
-              } else if (errorCode === 5) {
-                msg = 'HTML5 player error.';
+              // Guard against stale errors from previously requested tracks:
+              // 1. Generation check (protects A -> B -> A race conditions)
+              if (
+                event?.requestId !== undefined &&
+                event.requestId !== activeRequestIdRef.current
+              ) {
+                console.log(
+                  `[JALSAGHAR] Discarding stale YouTube error (${errorCode}) from request ${event.requestId} (active is ${activeRequestIdRef.current})`
+                );
+                return;
               }
 
-              if (onError) onError(errorCode, msg);
+              // 2. Video ID check
+              const activeVideoId =
+                event.target?.getVideoData?.()?.video_id || currentVideoIdRef.current;
+              if (
+                activeVideoId &&
+                currentVideoIdRef.current &&
+                activeVideoId !== currentVideoIdRef.current
+              ) {
+                console.log(
+                  `[JALSAGHAR] Discarding stale YouTube error (${errorCode}) for video: ${activeVideoId} (active authoritative is ${currentVideoIdRef.current})`
+                );
+                return;
+              }
+
+              const errorMap: Record<number, string> = {
+                2: 'INVALID_PARAMETER',
+                5: 'HTML5_PLAYER_ERROR',
+                100: 'VIDEO_NOT_FOUND_OR_PRIVATE',
+                101: 'EMBED_NOT_ALLOWED',
+                150: 'EMBED_NOT_ALLOWED',
+                153: 'REFERER_OR_API_CLIENT_ID_MISSING',
+              };
+              const errorName = errorMap[errorCode] || `UNKNOWN_CODE_${errorCode}`;
+
+              // Required explicit console logs
+              console.log('[JALSAGHAR] YOUTUBE ERROR', event.data);
+              console.log(
+                `[JALSAGHAR] YOUTUBE ERROR\ncode: ${errorCode} (${errorName})\nvideoId: ${currentVideoIdRef.current}\nyoutubeUrl: ${youtubeUrl}\ntrack: ${trackTitle || 'Unknown'}\nartist: ${trackArtist || 'Unknown'}\nreqId: ${activeRequestIdRef.current}`
+              );
+
+              // Surface error genuine and unmasked: DO NOT retry automatically
+              isTransitioningRef.current = false;
+              intendedPlayingRef.current = false;
+              if (onBufferingChange) onBufferingChange(false, activeRequestIdRef.current);
+              onPlayStateChange(false, activeRequestIdRef.current);
+
+              let errorType: 'youtube-only' | 'config-error' | 'unavailable' | 'error' = 'error';
+              let msg = `Archival recording unavailable (${errorName}).`;
+
+              if (errorCode === 101 || errorCode === 150) {
+                errorType = 'youtube-only';
+                msg = "This recording can't be played inside JALSAGHAR.";
+              } else if (errorCode === 153) {
+                errorType = 'config-error';
+                msg = 'YouTube embedder identity or Referer verification failed.';
+              } else if (errorCode === 100) {
+                errorType = 'unavailable';
+                msg = 'This video was removed or marked private on YouTube.';
+              } else if (errorCode === 5) {
+                errorType = 'error';
+                msg = 'The HTML5 browser player encountered an error.';
+              } else if (errorCode === 2) {
+                errorType = 'error';
+                msg = 'Invalid video parameter value.';
+              }
+
+              trackEvent('youtube_error', {
+                errorCode,
+                errorName,
+                errorType,
+                videoId: currentVideoIdRef.current,
+                trackTitle,
+                trackArtist,
+                requestId: activeRequestIdRef.current,
+              });
+
+              if (onError) onError(errorCode, msg, errorType, activeRequestIdRef.current);
             },
           },
         });
       } catch (err) {
-        console.warn('Error instantiating YT.Player:', err);
+        console.warn('[JALSAGHAR] Error instantiating YT.Player:', err);
       }
 
       return () => {
-        clearWatchdog();
         if (playerRef.current && typeof playerRef.current.destroy === 'function') {
           try {
             playerRef.current.destroy();
@@ -445,35 +586,21 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
       };
     }, [isApiReady]);
 
-    // 3. Fallback track transition if videoId changed from outside without loadAndPlay
+    // 3. Fallback synchronization if videoId changed from outside without loadAndPlay
     useEffect(() => {
       if (!isPlayerReadyRef.current || !playerRef.current || !videoId) return;
 
-      // If loadAndPlay has already loaded this video, do not re-load or cue it
+      // If loadAndPlay has already loaded this video, do not re-load
       if (currentLoadedVideoIdRef.current === videoId) return;
       currentLoadedVideoIdRef.current = videoId;
+      currentVideoIdRef.current = videoId;
 
       try {
         if (intendedPlayingRef.current || isPlaying) {
-          playerRef.current.loadVideoById({
-            videoId,
-            startSeconds: 0,
-          });
-          playerRef.current.playVideo();
-        } else {
-          playerRef.current.cueVideoById(videoId);
+          playerRef.current.loadVideoById(videoId);
         }
-      } catch {
-        try {
-          if (intendedPlayingRef.current || isPlaying) {
-            playerRef.current.loadVideoById(videoId, 0);
-            playerRef.current.playVideo();
-          } else {
-            playerRef.current.cueVideoById(videoId);
-          }
-        } catch (err) {
-          console.warn('Error loading new video on track change:', err);
-        }
+      } catch (err) {
+        console.warn('[JALSAGHAR] Error loading video on external prop change:', err);
       }
     }, [videoId, isPlaying]);
 
@@ -497,13 +624,22 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
       const interval = setInterval(() => {
         try {
           if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+            const activeVideoId = playerRef.current.getVideoData?.()?.video_id;
+            if (
+              activeVideoId &&
+              currentVideoIdRef.current &&
+              activeVideoId !== currentVideoIdRef.current
+            ) {
+              return; // Do not leak old track's progress during transition
+            }
+
             const current = playerRef.current.getCurrentTime() || 0;
             const total = playerRef.current.getDuration() || 0;
             const loadedFraction =
               typeof playerRef.current.getVideoLoadedFraction === 'function'
                 ? playerRef.current.getVideoLoadedFraction() || 0
                 : 0;
-            onProgress(current, total, loadedFraction);
+            onProgress(current, total, loadedFraction, activeRequestIdRef.current);
           }
         } catch {}
       }, 250);
@@ -513,12 +649,15 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
 
     return (
       <div
-        className={`w-[200px] h-[113px] sm:w-[220px] sm:h-[124px] md:w-[200px] md:h-[113px] rounded-xl overflow-hidden shadow-2xl border border-amber-900/30 bg-black pointer-events-auto transition-[width,height] duration-200 ${className}`}
+        className={`relative w-[200px] h-[200px] rounded-xl overflow-hidden shadow-2xl border border-amber-900/30 bg-black pointer-events-auto transition-[width,height] duration-200 ${className}`}
         role="region"
         aria-label="Archival Recording Window"
       >
-        {/* Unobtrusive, 100% compliant, standard minimum 200x113 YouTube iframe container */}
+        {/* Compliant minimum 200x200 viewport to satisfy YouTube embedded player minimums */}
         <div ref={containerRef} className="w-full h-full" />
+
+        {/* Optional overlay (e.g. graceful JALSAGHAR archival state) */}
+        {children}
       </div>
     );
   }

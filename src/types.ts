@@ -13,6 +13,28 @@ export type PlaybackState =
   | 'ended'
   | 'error';
 
+export type PlaybackStatus =
+  | 'idle'
+  | 'loading'
+  | 'playing'
+  | 'paused'
+  | 'buffering'
+  | 'youtube-only'
+  | 'config-error'
+  | 'unavailable'
+  | 'autoplay-blocked'
+  | 'error';
+
+export interface PlaybackErrorInfo {
+  code: number;
+  status: PlaybackStatus;
+  title: string;
+  message: string;
+  submessage?: string;
+  youtubeUrl: string;
+  videoId: string;
+}
+
 export type AudioTransitionState =
   | 'idle'
   | 'fading-in'
