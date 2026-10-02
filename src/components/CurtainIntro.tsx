@@ -5,7 +5,6 @@ import { trackEvent } from '../lib/analytics';
 interface CurtainIntroProps {
   isOpen: boolean;
   onOpen: () => void;
-  onStartPlayback?: () => void;
 }
 
 export const CurtainIntro: React.FC<CurtainIntroProps> = ({
