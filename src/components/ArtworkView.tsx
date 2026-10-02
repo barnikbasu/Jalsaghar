@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { TimeOfDay } from '../types';
 import { TIME_PERIODS } from '../lib/time';
 
@@ -36,12 +36,27 @@ export const ArtworkView: React.FC<ArtworkViewProps> = ({ timeOfDay }) => {
 
   const periods: TimeOfDay[] = ['shokal', 'dupur', 'bikel', 'raat'];
 
+  // Next likely period in chronological sequence (for selective pre-warming only)
+  const nextPeriodMap: Record<TimeOfDay, TimeOfDay> = useMemo(
+    () => ({
+      shokal: 'dupur',
+      dupur: 'bikel',
+      bikel: 'raat',
+      raat: 'shokal',
+    }),
+    []
+  );
+
+  const nextPeriod = nextPeriodMap[timeOfDay];
+
   return (
-    <div className="fixed inset-0 w-full h-full overflow-hidden z-0 bg-[#090607]">
+    <div className="fixed inset-0 w-full h-[100dvh] overflow-hidden z-0 bg-[#090607]">
       {/* 4 Automatic Time-of-Day Painting Layers */}
       {periods.map((period) => {
         const info = TIME_PERIODS[period];
         const isActive = timeOfDay === period;
+        const isNextLikely = period === nextPeriod;
+        // Only load if active or next likely period to prevent eagerly downloading all eight files
         const currentSrc = isPortrait ? info.tallImage : info.wideImage;
 
         return (
@@ -56,21 +71,24 @@ export const ArtworkView: React.FC<ArtworkViewProps> = ({ timeOfDay }) => {
             }`}
           >
             {/* The Painting / The World */}
-            <img
-              src={currentSrc}
-              alt={`Jalsaghar Indian Classical Mehfil Room - ${info.name}`}
-              className="w-full h-full object-cover object-center"
-              loading="eager"
-            />
+            {(isActive || isNextLikely) && (
+              <img
+                src={currentSrc}
+                alt={`Jalsaghar Indian Classical Mehfil Room - ${info.name}`}
+                className="w-full h-full object-cover object-center pointer-events-none select-none"
+                loading={isActive ? 'eager' : 'lazy'}
+                decoding="async"
+              />
+            )}
           </div>
         );
       })}
 
-      {/* Atmospheric depth vignette for UI contrast */}
-      <div className="absolute inset-0 pointer-events-none z-20 bg-gradient-to-b from-black/40 via-transparent to-black/70" />
+      {/* Gentle room ambient shadow for legible UI furniture without heavy artificial gradients */}
+      <div className="absolute inset-0 pointer-events-none z-20 bg-gradient-to-b from-black/25 via-transparent to-black/45" />
 
-      {/* Subtle film grain texture overlay */}
-      <div className="absolute inset-0 pointer-events-none z-20 film-grain mix-blend-overlay opacity-30" />
+      {/* Subtle monochrome paper/film grain layer (Target opacity ~0.03) */}
+      <div className="absolute inset-0 pointer-events-none z-20 film-grain" />
     </div>
   );
 };

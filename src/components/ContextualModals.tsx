@@ -102,41 +102,41 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
         <div
           role="dialog"
           aria-labelledby="creator-heading"
-          className="relative z-10 w-full max-w-[440px] bg-[#1a1b1f]/95 text-[#EAEAEA] rounded-[24px] p-7 sm:p-9 border border-white/10 shadow-[0_25px_60px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-all duration-200 select-none animate-in fade-in zoom-in-95 font-poppins text-center"
+          className="relative z-10 w-full max-w-[440px] bg-[rgba(14,8,10,0.96)] text-[#f7f3e9] rounded-2xl p-7 sm:p-8 border border-[rgba(212,175,55,0.18)] shadow-[0_25px_65px_rgba(0,0,0,0.95)] backdrop-blur-md transition-all duration-200 select-none animate-in fade-in zoom-in-95 font-poppins text-center"
         >
           {/* Close button */}
           <button
             onClick={onCloseCreators}
             id="close-creators-modal-btn"
-            className="absolute top-4 right-5 p-2 rounded-full text-[#8e9297] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="absolute top-4 right-4 p-2 rounded-full text-[#d6be96]/60 hover:text-[#f7f3e9] hover:bg-[rgba(212,175,55,0.10)] transition-colors cursor-pointer"
             aria-label="Close modal"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
 
           {/* Header Text */}
           <div className="mb-6 sm:mb-7">
             <h2
               id="creator-heading"
-              className="font-poppins text-xs tracking-[2px] text-[#c5a880] uppercase font-semibold"
+              className="font-rozha text-xs tracking-[0.25em] text-[#d6be96] uppercase font-normal"
             >
               MADE WITH BHALOBASHA BY
             </h2>
           </div>
 
           {/* Centered Single Profile Card */}
-          <div className="flex flex-col items-center p-6 rounded-2xl bg-white/[0.02] border border-white/[0.06] mb-7">
-            {/* Avatar Container with Gold Gradient Ring */}
-            <div className="relative w-24 h-24 sm:w-26 sm:h-26 rounded-full p-1 bg-gradient-to-br from-[#c5a880] via-[#c5a880]/30 to-transparent shadow-md mb-3.5">
+          <div className="flex flex-col items-center p-6 rounded-xl bg-[rgba(255,255,255,0.02)] border border-[rgba(212,175,55,0.10)] mb-6">
+            {/* Avatar Container with Subtle Gold Ring */}
+            <div className="relative w-24 h-24 sm:w-26 sm:h-26 rounded-full p-1 bg-gradient-to-br from-[#d6be96] via-[#d6be96]/30 to-transparent shadow-md mb-3.5">
               <img
                 src="/barnikbasu.png"
                 alt="Barnik Basu"
                 referrerPolicy="no-referrer"
-                className="w-full h-full rounded-full object-cover object-top border border-[#1a1b1f]"
+                className="w-full h-full rounded-full object-cover object-top border border-[#160b0e]"
               />
             </div>
 
-            <h3 className="font-poppins text-lg font-medium text-white tracking-wide mb-3.5">
+            <h3 className="font-rozha text-lg text-[#f7f3e9] tracking-wide mb-3.5">
               Barnik Basu
             </h3>
 
@@ -147,7 +147,7 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
                 href="https://www.linkedin.com/in/barnik-basu/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.08] text-[#8e9297] hover:text-white transition-all text-xs font-poppins tracking-wider cursor-pointer group"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[rgba(11,6,7,0.72)] hover:bg-[rgba(212,175,55,0.12)] border border-[rgba(212,175,55,0.15)] text-[#d6be96]/80 hover:text-[#f7f3e9] transition-all text-xs font-poppins tracking-wider cursor-pointer group"
                 aria-label="Barnik Basu on LinkedIn (opens in new tab)"
               >
                 <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24" aria-hidden="true">
@@ -161,7 +161,7 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
                 href="https://www.instagram.com/barnikbasu/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.08] text-[#8e9297] hover:text-white transition-all text-xs font-poppins tracking-wider cursor-pointer group"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[rgba(11,6,7,0.72)] hover:bg-[rgba(212,175,55,0.12)] border border-[rgba(212,175,55,0.15)] text-[#d6be96]/80 hover:text-[#f7f3e9] transition-all text-xs font-poppins tracking-wider cursor-pointer group"
                 aria-label="Barnik Basu on Instagram (opens in new tab)"
               >
                 <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24" aria-hidden="true">
@@ -173,20 +173,20 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
           </div>
 
           {/* Footer Section: Contact Information with single-click copy capsule */}
-          <div className="pt-6 border-t border-white/[0.06] text-center">
-            <p className="font-poppins text-[10px] tracking-[1.5px] text-[#8e9297] uppercase mb-3 font-semibold">
+          <div className="pt-5 border-t border-[rgba(212,175,55,0.12)] text-center">
+            <p className="font-rozha text-[10px] tracking-[0.2em] text-[#d6be96]/60 uppercase mb-2.5">
               HAVE QUESTIONS OR THOUGHTS?
             </p>
 
-            <div className="inline-flex items-center gap-2 max-w-full pl-3.5 pr-1.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.07] hover:border-white/[0.15] transition-all">
-              <Mail className="w-4 h-4 text-[#8e9297] shrink-0" />
-              <span className="font-poppins text-xs sm:text-sm text-white select-all truncate font-normal">
+            <div className="inline-flex items-center gap-2 max-w-full pl-3.5 pr-1.5 py-1.5 rounded-full bg-[rgba(11,6,7,0.72)] border border-[rgba(212,175,55,0.15)] hover:border-[rgba(212,175,55,0.30)] transition-all">
+              <Mail className="w-3.5 h-3.5 text-[#d6be96]/70 shrink-0" />
+              <span className="font-mono text-xs sm:text-sm text-[#f7f3e9] select-all truncate font-normal">
                 {contactEmail}
               </span>
               <button
                 onClick={handleCopyEmail}
                 id="copy-creator-email-btn"
-                className="ml-1 px-3.5 py-1 rounded-full bg-white/[0.08] hover:bg-white/[0.16] text-white transition-all text-xs font-poppins font-medium flex items-center gap-1 cursor-pointer shrink-0"
+                className="ml-1 px-3 py-1 rounded-full bg-[rgba(212,175,55,0.12)] hover:bg-[rgba(212,175,55,0.22)] border border-[rgba(212,175,55,0.25)] text-[#f7f3e9] transition-all text-xs font-poppins font-medium flex items-center gap-1 cursor-pointer shrink-0"
                 aria-label="Copy email address"
               >
                 {emailCopied ? (
@@ -213,13 +213,13 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
           role="dialog"
           aria-labelledby="support-heading"
           aria-describedby="support-subheading"
-          className="relative z-10 w-full max-w-sm bg-[#1E2022]/95 text-[#EAEAEA] rounded-3xl p-6 sm:p-7 border border-white/10 shadow-[0_25px_60px_rgba(0,0,0,0.9)] backdrop-blur-xl transition-all duration-200 select-none animate-in fade-in zoom-in-95 font-poppins"
+          className="relative z-10 w-full max-w-sm bg-[rgba(14,8,10,0.96)] text-[#f7f3e9] rounded-2xl p-6 sm:p-7 border border-[rgba(212,175,55,0.18)] shadow-[0_25px_65px_rgba(0,0,0,0.95)] backdrop-blur-md transition-all duration-200 select-none animate-in fade-in zoom-in-95 font-poppins"
         >
           {/* Close button */}
           <button
             onClick={onCloseSupport}
             id="close-support-modal-btn"
-            className="absolute top-4 right-4 p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="absolute top-4 right-4 p-2 rounded-full text-[#d6be96]/60 hover:text-[#f7f3e9] hover:bg-[rgba(212,175,55,0.10)] transition-colors cursor-pointer"
             aria-label="Close chai support card"
           >
             <X className="w-4 h-4" />
@@ -229,47 +229,47 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
           <div className="text-center mb-1">
             <h2
               id="support-heading"
-              className="font-poppins text-xl sm:text-2xl font-medium text-[#EAEAEA] tracking-tight"
+              className="font-rozha text-xl sm:text-2xl font-normal text-[#f7f3e9] tracking-wide"
             >
               Buy me a chai
             </h2>
             <p
               id="support-subheading"
-              className="font-poppins text-xs sm:text-sm text-[#d8be87]/90 mt-1"
+              className="font-serif text-xs sm:text-sm text-[#d6be96]/80 mt-1"
             >
               Keep the mehfil playing.
             </p>
           </div>
 
           {/* QR Code Container */}
-          <div className="flex flex-col items-center my-5">
-            <div className="p-3 bg-white rounded-2xl shadow-lg border border-white/20 flex items-center justify-center">
+          <div className="flex flex-col items-center my-4 sm:my-5">
+            <div className="p-3 bg-white rounded-xl shadow-lg border border-[rgba(212,175,55,0.25)] flex items-center justify-center">
               {qrDataUrl ? (
                 <img
                   src={qrDataUrl}
                   alt="UPI QR Code to pay barnikbasu@oksbi"
-                  className="w-44 h-44 sm:w-48 sm:h-48 block rounded-lg"
+                  className="w-40 h-40 sm:w-44 sm:h-44 block rounded-lg"
                 />
               ) : (
-                <div className="w-44 h-44 sm:w-48 sm:h-48 flex items-center justify-center bg-neutral-100 rounded-lg text-neutral-400">
+                <div className="w-40 h-40 sm:w-44 sm:h-44 flex items-center justify-center bg-neutral-100 rounded-lg text-neutral-400">
                   <Coffee className="w-8 h-8 animate-pulse text-[#d8be87]" />
                 </div>
               )}
             </div>
 
             {/* Restrained instruction below QR code */}
-            <p className="font-poppins text-xs tracking-wider text-white/60 mt-3 uppercase font-medium">
+            <p className="font-rozha text-[11px] tracking-[0.2em] text-[#d6be96]/60 mt-3 uppercase">
               Scan with any UPI app
             </p>
           </div>
 
           {/* UPI ID Section with Copy Button */}
-          <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-2">
-            <div className="flex flex-col text-left pl-1">
-              <span className="font-poppins text-[10px] uppercase tracking-widest text-[#d8be87] font-semibold">
+          <div className="p-2.5 sm:p-3 rounded-xl bg-[rgba(11,6,7,0.72)] border border-[rgba(212,175,55,0.15)] flex items-center justify-between gap-2">
+            <div className="flex flex-col text-left pl-1 min-w-0">
+              <span className="font-rozha text-[9.5px] uppercase tracking-widest text-[#d6be96]/70">
                 UPI ID
               </span>
-              <span className="font-poppins text-xs sm:text-sm text-[#EAEAEA] font-medium tracking-wide">
+              <span className="font-mono text-xs sm:text-sm text-[#f7f3e9] tracking-wide truncate">
                 {upiId}
               </span>
             </div>
@@ -277,7 +277,7 @@ export const ContextualModals: React.FC<ContextualModalsProps> = ({
             <button
               onClick={handleCopyUpi}
               id="copy-upi-id-btn"
-              className="px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-[#EAEAEA] transition-all text-xs font-poppins font-medium flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-1.5 rounded-full bg-[rgba(212,175,55,0.12)] hover:bg-[rgba(212,175,55,0.22)] border border-[rgba(212,175,55,0.25)] text-[#f7f3e9] transition-all text-xs font-poppins font-medium flex items-center gap-1.5 cursor-pointer shrink-0"
               aria-label="Copy UPI ID to clipboard"
             >
               {upiCopied ? (

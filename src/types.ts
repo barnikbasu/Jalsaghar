@@ -42,6 +42,8 @@ export type AudioTransitionState =
   | 'fading-out'
   | 'transitioning';
 
+export type PlaybackTransport = 'youtube' | 'authorized-audio';
+
 export interface Track {
   id: string;
   title: string;
@@ -58,6 +60,8 @@ export interface Track {
   playlistId?: PlaylistId;
   notes?: string;
   youtubeUrl: string;
+  audioUrl?: string;
+  audioMimeType?: string;
 }
 
 export interface RaagInfo {

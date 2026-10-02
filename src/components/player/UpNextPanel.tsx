@@ -21,9 +21,9 @@ export const UpNextPanel: React.FC<UpNextPanelProps> = ({
   onClose,
 }) => {
   return (
-    <div className="w-full max-w-xl mb-3 bg-[#140e11]/95 backdrop-blur-2xl border border-[#d8be87]/20 rounded-2xl p-4 sm:p-5 shadow-[0_15px_45px_rgba(0,0,0,0.9)] pointer-events-auto max-h-72 overflow-y-auto z-50 text-[#f5ede0] animate-in fade-in slide-in-from-bottom-3 duration-200">
+    <div className="w-full max-w-xl mb-3 bg-[rgba(14,8,10,0.96)] backdrop-blur-md border border-[rgba(212,175,55,0.18)] rounded-2xl p-4 sm:p-5 shadow-[0_20px_50px_rgba(0,0,0,0.95)] pointer-events-auto max-h-72 overflow-y-auto z-50 text-[#f5ede0] animate-in fade-in slide-in-from-bottom-3 duration-200">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#d8be87]/15">
+      <div className="flex items-center justify-between pb-3 mb-3 border-b border-[rgba(212,175,55,0.12)]">
         <div className="flex items-center gap-2">
           <ListMusic className="w-4 h-4 text-[#d8be87]" />
           <span className="font-rozha text-xs uppercase tracking-widest text-[#e8cca0]">
@@ -33,15 +33,15 @@ export const UpNextPanel: React.FC<UpNextPanelProps> = ({
 
         <div className="flex items-center gap-2">
           {/* Playlist / Collection Filters */}
-          <div className="flex items-center gap-1 bg-white/5 p-0.5 rounded-full border border-white/5">
+          <div className="flex items-center gap-1 bg-[rgba(11,6,7,0.72)] p-0.5 rounded-full border border-[rgba(212,175,55,0.12)]">
             {(['baithak', 'riyaz', 'mehfil'] as PlaylistId[]).map((pid) => (
               <button
                 key={pid}
                 onClick={() => onPlaylistChange(pid)}
                 className={`px-2.5 py-0.5 rounded-full text-[10px] font-rozha uppercase tracking-wider transition-all cursor-pointer ${
                   currentPlaylist === pid
-                    ? 'bg-[#d8be87] text-black font-semibold shadow-sm'
-                    : 'text-[#d8be87]/70 hover:text-white hover:bg-white/10'
+                    ? 'bg-[rgba(212,175,55,0.25)] text-[#f7f3e9] border border-[rgba(212,175,55,0.35)] font-semibold shadow-sm'
+                    : 'text-[#d8be87]/70 hover:text-white hover:bg-[rgba(212,175,55,0.10)]'
                 }`}
               >
                 {pid}
@@ -51,7 +51,7 @@ export const UpNextPanel: React.FC<UpNextPanelProps> = ({
 
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1 rounded-full text-[#d6be96]/60 hover:text-white hover:bg-[rgba(212,175,55,0.10)] transition-colors"
             aria-label="Close Up Next Panel"
           >
             <X className="w-3.5 h-3.5" />
@@ -72,8 +72,8 @@ export const UpNextPanel: React.FC<UpNextPanelProps> = ({
               }}
               className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between text-xs transition-all cursor-pointer group ${
                 isCurrent
-                  ? 'bg-[#d8be87]/15 border border-[#d8be87]/30 text-[#f4ebdc]'
-                  : 'text-[#e5d8c3]/80 hover:bg-white/5 hover:text-white border border-transparent'
+                  ? 'bg-[rgba(212,175,55,0.12)] border border-[rgba(212,175,55,0.25)] text-[#f7f3e9]'
+                  : 'text-[#e5d8c3]/80 hover:bg-[rgba(212,175,55,0.06)] hover:text-white border border-transparent'
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0 pr-2">
@@ -85,7 +85,7 @@ export const UpNextPanel: React.FC<UpNextPanelProps> = ({
                   )}
                 </span>
                 <div className="truncate">
-                  <p className="font-rozha text-xs sm:text-sm text-[#f4ebdc] truncate font-medium">
+                  <p className="font-rozha text-xs sm:text-sm text-[#f7f3e9] truncate font-medium">
                     {track.title}
                   </p>
                   <p className="text-[10px] text-[#b09e86] truncate">

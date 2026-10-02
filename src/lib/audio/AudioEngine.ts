@@ -1,800 +1,327 @@
 /**
- * Jalsaghar AudioEngine
- * Production-grade HTML5 Audio dual-deck playback engine with robust event handling,
- * race-condition mitigation, buffering telemetry, normalization, and crossfade foundation.
+ * JALSAGHAR — Authorized HTML5 Audio Transport Engine
  * 
- * Pure TypeScript — zero React dependencies, zero Supabase dependencies.
+ * Headless, single-instance HTML5 audio transport for recordings that JALSAGHAR
+ * is legally authorized to host and stream directly.
+ * 
+ * Architecture invariants:
+ * 1. Exactly one stable HTMLAudioElement instance.
+ * 2. Never recreated across renders, track transitions, or volume changes.
+ * 3. Protected by monotonic request generation tokens (activeRequestId).
+ * 4. Stale callbacks from older requests are strictly discarded.
+ * 5. Respects browser autoplay, power management, and interruption policies.
  */
 
-import {
-  AudioTrack,
-  AudioPlaybackState,
-  AudioEngineSnapshot,
-  AudioEngineEventType,
-  AudioEngineEvents,
-  AudioEngineListener,
-} from './audioTypes';
-import {
-  clamp,
-  calculateBufferedRanges,
-  createConfiguredAudio,
-  safeCleanupAudioElement,
-  easeSineInOut,
-  parseAudioTime,
-} from './audioUtils';
-
-interface DeckState {
-  audio: HTMLAudioElement;
-  slot: 'A' | 'B';
-  track: AudioTrack | null;
-  fadeGain: number; // 0.0 to 1.0
-  listeners: Record<string, EventListener>;
+export interface AudioEngineCallbacks {
+  onProgress?: (currentTime: number, duration: number, bufferedFraction: number, requestId: number) => void;
+  onPlayStateChange?: (playing: boolean, requestId: number) => void;
+  onBufferingChange?: (buffering: boolean, requestId: number) => void;
+  onEnded?: (requestId: number) => void;
+  onError?: (error: { code: number; message: string; submessage?: string }, requestId: number) => void;
+  onAutoplayBlocked?: (requestId: number) => void;
 }
 
 export class AudioEngine {
-  // Dual deck architecture
-  private deckA: DeckState;
-  private deckB: DeckState;
-  private activeSlot: 'A' | 'B' = 'A';
+  private audio: HTMLAudioElement | null = null;
+  private activeRequestId: number = 0;
+  private currentUrl: string = '';
+  private callbacks: AudioEngineCallbacks = {};
+  private isDestroyed: boolean = false;
+  private intendedPlaying: boolean = false;
 
-  // State
-  private playbackState: AudioPlaybackState = 'idle';
-  private currentTrack: AudioTrack | null = null;
-  private currentTime: number = 0;
-  private duration: number = 0;
-  private bufferedFraction: number = 0;
-  private bufferedSeconds: number = 0;
-  private errorMessage: string | null = null;
-
-  // Volume & Normalization
-  private userVolume: number = 0.8; // 0.0 to 1.0
-  private previousNonZeroVolume: number = 0.8;
-  private isMutedState: boolean = false;
-  private normalizationGain: number = 1.0;
-
-  // Concurrency & Race Condition Guard
-  private currentOperationId: number = 0;
-  private isDisposed: boolean = false;
-
-  // Active Crossfade Animation Frame
-  private crossfadeRafId: number | null = null;
-
-  // Subscribers
-  private snapshotListeners: Set<AudioEngineListener> = new Set();
-  private eventHandlers: {
-    [K in AudioEngineEventType]?: Set<(...args: unknown[]) => void>;
-  } = {};
-
-  constructor(initialVolume: number = 0.8) {
-    this.userVolume = clamp(initialVolume, 0, 1);
-    this.previousNonZeroVolume = this.userVolume > 0 ? this.userVolume : 0.8;
-
-    // Instantiate dual decks
-    this.deckA = this.createDeck('A');
-    this.deckB = this.createDeck('B');
-
-    // Attach lifecycle listeners to both decks
-    this.attachDeckListeners(this.deckA);
-    this.attachDeckListeners(this.deckB);
+  constructor(callbacks?: AudioEngineCallbacks) {
+    if (callbacks) {
+      this.callbacks = callbacks;
+    }
+    this.initAudioElement();
   }
 
-  // ============================================================================
-  // Deck Initialization & Lifecycle
-  // ============================================================================
+  private initAudioElement(): void {
+    if (typeof window === 'undefined') return;
 
-  private createDeck(slot: 'A' | 'B'): DeckState {
-    const audio = createConfiguredAudio(`jalsaghar-deck-${slot.toLowerCase()}`);
-    return {
-      audio,
-      slot,
-      track: null,
-      fadeGain: slot === 'A' ? 1.0 : 0.0,
-      listeners: {},
-    };
+    try {
+      this.audio = new Audio();
+      this.audio.preload = 'metadata';
+      this.audio.crossOrigin = 'anonymous';
+
+      // Attach native DOM event listeners
+      this.attachListeners();
+    } catch (err) {
+      console.warn('[JALSAGHAR AudioEngine] Failed to initialize HTMLAudioElement:', err);
+    }
   }
 
-  private attachDeckListeners(deck: DeckState) {
-    const audio = deck.audio;
+  private attachListeners(): void {
+    if (!this.audio) return;
 
-    const onPlay = () => {
-      if (this.isActiveDeck(deck)) {
-        this.setPlaybackState('playing');
-      }
-    };
-
-    const onPause = () => {
-      if (this.isActiveDeck(deck)) {
-        // Only set paused if we aren't currently loading/ended/buffering/error
-        if (
-          this.playbackState !== 'loading' &&
-          this.playbackState !== 'ended' &&
-          this.playbackState !== 'error' &&
-          this.playbackState !== 'buffering'
-        ) {
-          this.setPlaybackState('paused');
-        }
-      }
-    };
-
-    const onWaiting = () => {
-      if (this.isActiveDeck(deck) && this.playbackState === 'playing') {
-        this.setPlaybackState('buffering');
-      }
-    };
-
-    const onPlaying = () => {
-      if (this.isActiveDeck(deck)) {
-        this.setPlaybackState('playing');
-      }
-    };
-
-    const onCanPlay = () => {
-      if (this.isActiveDeck(deck)) {
-        if (this.playbackState === 'buffering') {
-          this.setPlaybackState('playing');
-        } else if (this.playbackState === 'loading') {
-          // If paused by default after load, transition to paused
-          if (audio.paused) {
-            this.setPlaybackState('paused');
-          } else {
-            this.setPlaybackState('playing');
-          }
-        }
-      }
-    };
-
-    const onLoadedMetadata = () => {
-      if (this.isActiveDeck(deck)) {
-        const rawDuration = audio.duration;
-        if (isFinite(rawDuration) && rawDuration > 0) {
-          this.duration = rawDuration;
-        } else if (deck.track?.duration) {
-          this.duration =
-            typeof deck.track.duration === 'number'
-              ? deck.track.duration
-              : parseAudioTime(deck.track.duration);
-        }
-        this.emit('durationChange', this.duration);
-        this.updateBufferedProgress(deck);
-        this.notifySnapshot();
-      }
-    };
-
-    const onTimeUpdate = () => {
-      if (this.isActiveDeck(deck)) {
-        this.currentTime = audio.currentTime;
-        if (isFinite(audio.duration) && audio.duration > 0) {
-          this.duration = audio.duration;
-        }
-        this.emit('timeUpdate', this.currentTime, this.duration);
-        this.updateBufferedProgress(deck);
-      }
-    };
-
-    const onProgress = () => {
-      if (this.isActiveDeck(deck)) {
-        this.updateBufferedProgress(deck);
-      }
-    };
-
-    const onEnded = () => {
-      if (this.isActiveDeck(deck)) {
-        this.setPlaybackState('ended');
-        if (deck.track) {
-          this.emit('trackEnded', deck.track);
-        }
-      }
-    };
-
-    const onError = () => {
-      if (this.isActiveDeck(deck)) {
-        let message = 'Audio playback error';
-        if (audio.error) {
-          switch (audio.error.code) {
-            case MediaError.MEDIA_ERR_ABORTED:
-              // User aborted or fetch was aborted — ignore if rapid track change
-              return;
-            case MediaError.MEDIA_ERR_NETWORK:
-              message = 'Network error during audio stream retrieval.';
-              break;
-            case MediaError.MEDIA_ERR_DECODE:
-              message = 'Audio decoding failed or corrupted media.';
-              break;
-            case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-              message = 'Audio format not supported or URL unavailable.';
-              break;
-            default:
-              message = audio.error.message || 'Unknown media playback error.';
-          }
-        }
-        this.errorMessage = message;
-        this.setPlaybackState('error');
-        this.emit('error', message, audio.error);
-      }
-    };
-
-    deck.listeners = {
-      play: onPlay as EventListener,
-      pause: onPause as EventListener,
-      waiting: onWaiting as EventListener,
-      playing: onPlaying as EventListener,
-      canplay: onCanPlay as EventListener,
-      loadedmetadata: onLoadedMetadata as EventListener,
-      timeupdate: onTimeUpdate as EventListener,
-      progress: onProgress as EventListener,
-      ended: onEnded as EventListener,
-      error: onError as EventListener,
-    };
-
-    Object.entries(deck.listeners).forEach(([event, handler]) => {
-      audio.addEventListener(event, handler);
-    });
+    this.audio.addEventListener('play', this.handlePlay);
+    this.audio.addEventListener('playing', this.handlePlaying);
+    this.audio.addEventListener('pause', this.handlePause);
+    this.audio.addEventListener('waiting', this.handleWaiting);
+    this.audio.addEventListener('canplay', this.handleCanPlay);
+    this.audio.addEventListener('timeupdate', this.handleTimeUpdate);
+    this.audio.addEventListener('durationchange', this.handleDurationChange);
+    this.audio.addEventListener('progress', this.handleProgress);
+    this.audio.addEventListener('ended', this.handleEnded);
+    this.audio.addEventListener('error', this.handleError);
   }
 
-  private detachDeckListeners(deck: DeckState) {
-    const audio = deck.audio;
-    Object.entries(deck.listeners).forEach(([event, handler]) => {
-      audio.removeEventListener(event, handler);
-    });
-    deck.listeners = {};
+  private removeListeners(): void {
+    if (!this.audio) return;
+
+    this.audio.removeEventListener('play', this.handlePlay);
+    this.audio.removeEventListener('playing', this.handlePlaying);
+    this.audio.removeEventListener('pause', this.handlePause);
+    this.audio.removeEventListener('waiting', this.handleWaiting);
+    this.audio.removeEventListener('canplay', this.handleCanPlay);
+    this.audio.removeEventListener('timeupdate', this.handleTimeUpdate);
+    this.audio.removeEventListener('durationchange', this.handleDurationChange);
+    this.audio.removeEventListener('progress', this.handleProgress);
+    this.audio.removeEventListener('ended', this.handleEnded);
+    this.audio.removeEventListener('error', this.handleError);
   }
 
-  private isActiveDeck(deck: DeckState): boolean {
-    return deck.slot === this.activeSlot;
+  public setCallbacks(callbacks: AudioEngineCallbacks): void {
+    this.callbacks = callbacks;
   }
 
-  private getActiveDeck(): DeckState {
-    return this.activeSlot === 'A' ? this.deckA : this.deckB;
+  public getActiveRequestId(): number {
+    return this.activeRequestId;
   }
-
-  private getStandbyDeck(): DeckState {
-    return this.activeSlot === 'A' ? this.deckB : this.deckA;
-  }
-
-  // ============================================================================
-  // Playback Controls
-  // ============================================================================
 
   /**
-   * Loads an AudioTrack into the active deck.
-   * Cancels any pending in-flight playback operations to prevent race conditions.
-   * 
-   * @param track The track containing metadata and audioSrc
-   * @param autoPlay Whether to immediately begin playback once ready
+   * Load an authorized audio URL with a monotonic request generation token.
    */
-  public async load(track: AudioTrack, autoPlay: boolean = false): Promise<void> {
-    if (this.isDisposed) return;
+  public load(url: string, requestId: number, autoPlay: boolean = true): void {
+    this.activeRequestId = requestId;
+    this.currentUrl = url;
+    this.intendedPlaying = autoPlay;
 
-    // Increment operation ID to invalidate any prior in-flight loads or plays
-    const operationId = ++this.currentOperationId;
+    if (this.isDestroyed || !this.audio) return;
 
-    this.cancelCrossfade();
-    this.errorMessage = null;
-    this.currentTrack = track;
-    this.currentTime = 0;
-    this.bufferedFraction = 0;
-    this.bufferedSeconds = 0;
+    // Reset previous media pipeline
+    this.audio.pause();
+    this.audio.src = url;
+    this.audio.load();
 
-    // Estimate duration if provided as string or number in track
-    if (track.duration) {
-      this.duration =
-        typeof track.duration === 'number'
-          ? track.duration
-          : parseAudioTime(track.duration);
+    if (autoPlay) {
+      this.play(requestId);
+    }
+  }
+
+  public async play(requestId?: number): Promise<void> {
+    if (this.isDestroyed || !this.audio) return;
+    const reqId = requestId ?? this.activeRequestId;
+
+    // Stale generation guard
+    if (reqId !== this.activeRequestId) return;
+
+    this.intendedPlaying = true;
+
+    try {
+      await this.audio.play();
+      if (reqId === this.activeRequestId) {
+        this.callbacks.onPlayStateChange?.(true, reqId);
+        this.callbacks.onBufferingChange?.(false, reqId);
+      }
+    } catch (err: any) {
+      if (reqId !== this.activeRequestId) return;
+
+      // Handle browser autoplay policy restrictions gracefully
+      if (err?.name === 'NotAllowedError') {
+        console.warn('[JALSAGHAR AudioEngine] Autoplay prevented by browser policy:', err);
+        this.intendedPlaying = false;
+        this.callbacks.onPlayStateChange?.(false, reqId);
+        this.callbacks.onAutoplayBlocked?.(reqId);
+      } else if (err?.name !== 'AbortError') {
+        // AbortError is normal when rapid track transitions interrupt an ongoing play()
+        console.warn('[JALSAGHAR AudioEngine] Playback error:', err);
+        this.callbacks.onError?.(
+          {
+            code: 2,
+            message: 'Audio Playback Error',
+            submessage: err?.message || 'Failed to start authorized audio transport',
+          },
+          reqId
+        );
+      }
+    }
+  }
+
+  public pause(requestId?: number): void {
+    if (this.isDestroyed || !this.audio) return;
+    const reqId = requestId ?? this.activeRequestId;
+
+    if (reqId !== this.activeRequestId) return;
+
+    this.intendedPlaying = false;
+    this.audio.pause();
+    this.callbacks.onPlayStateChange?.(false, reqId);
+    this.callbacks.onBufferingChange?.(false, reqId);
+  }
+
+  /**
+   * Completely disarms the audio transport when switching to YouTube.
+   */
+  public disarm(): void {
+    if (!this.audio) return;
+    this.intendedPlaying = false;
+    this.audio.pause();
+    this.audio.removeAttribute('src');
+    this.audio.load();
+    this.currentUrl = '';
+  }
+
+  public seekTo(seconds: number): void {
+    if (this.isDestroyed || !this.audio) return;
+    if (isNaN(seconds) || seconds < 0) return;
+
+    const duration = this.audio.duration;
+    if (isFinite(duration) && duration > 0) {
+      this.audio.currentTime = Math.min(seconds, duration);
     } else {
-      this.duration = 0;
+      this.audio.currentTime = seconds;
     }
 
-    this.normalizationGain =
-      typeof track.normalizationGain === 'number' && !isNaN(track.normalizationGain)
-        ? clamp(track.normalizationGain, 0.5, 1.5)
-        : 1.0;
-
-    const activeDeck = this.getActiveDeck();
-    activeDeck.track = track;
-    activeDeck.fadeGain = 1.0;
-
-    this.setPlaybackState('loading');
-
-    const srcUrl = track.audioSrc;
-    if (!srcUrl) {
-      // If audioSrc is empty or not provided
-      this.errorMessage = 'No audio source URL provided for this track.';
-      this.setPlaybackState('error');
-      this.emit('error', this.errorMessage);
-      return;
-    }
-
-    try {
-      // Pause any ongoing playback on the deck
-      activeDeck.audio.pause();
-      activeDeck.audio.currentTime = 0;
-
-      // Assign new source URL
-      activeDeck.audio.src = srcUrl;
-      activeDeck.audio.load();
-
-      this.syncDeckVolume(activeDeck);
-
-      // Verify that this operation has not been superseded by a newer load call
-      if (this.currentOperationId !== operationId) {
-        return;
-      }
-
-      if (autoPlay) {
-        await this.play();
-      }
-    } catch (err: unknown) {
-      if (this.currentOperationId !== operationId) return;
-
-      const errObj = err instanceof Error ? err : new Error(String(err));
-      // AbortError is normal during quick skipping
-      if (errObj.name !== 'AbortError') {
-        this.errorMessage = errObj.message;
-        this.setPlaybackState('error');
-        this.emit('error', errObj.message, errObj);
-      }
-    }
+    this.dispatchProgress();
   }
 
-  /**
-   * Resumes or starts playback on the active deck.
-   * Gracefully handles browser Autoplay policies and AbortErrors.
-   */
-  public async play(): Promise<void> {
-    if (this.isDisposed) return;
-
-    const operationId = this.currentOperationId;
-    const activeDeck = this.getActiveDeck();
-
-    if (!activeDeck.audio.src) {
-      if (this.currentTrack?.audioSrc) {
-        await this.load(this.currentTrack, true);
-        return;
-      }
-      this.setPlaybackState('idle');
-      return;
-    }
-
-    try {
-      this.syncDeckVolume(activeDeck);
-      const playPromise = activeDeck.audio.play();
-
-      if (playPromise !== undefined) {
-        await playPromise;
-      }
-
-      if (this.currentOperationId === operationId) {
-        this.setPlaybackState('playing');
-      }
-    } catch (err: unknown) {
-      if (this.currentOperationId !== operationId) return;
-
-      const errObj = err instanceof Error ? err : new Error(String(err));
-      if (errObj.name === 'NotAllowedError') {
-        // Browser prevented autoplay without prior user interaction
-        this.setPlaybackState('paused');
-        this.errorMessage = 'Autoplay blocked: user interaction required.';
-        this.notifySnapshot();
-      } else if (errObj.name === 'AbortError') {
-        // The play request was interrupted by pause() or another load()
-        // No action required
-      } else {
-        this.errorMessage = errObj.message;
-        this.setPlaybackState('error');
-        this.emit('error', errObj.message, errObj);
-      }
-    }
+  public setVolume(volume0to100: number): void {
+    if (this.isDestroyed || !this.audio) return;
+    const clamped = Math.max(0, Math.min(100, volume0to100));
+    this.audio.volume = clamped / 100;
   }
 
-  /**
-   * Pauses the active deck.
-   */
-  public pause(): void {
-    if (this.isDisposed) return;
-    const activeDeck = this.getActiveDeck();
-    try {
-      activeDeck.audio.pause();
-    } catch {
-      // Ignore pause failure
-    }
-    this.setPlaybackState('paused');
-  }
-
-  /**
-   * Stops playback and resets the position to zero.
-   */
-  public stop(): void {
-    if (this.isDisposed) return;
-    this.currentOperationId++;
-    this.cancelCrossfade();
-
-    const activeDeck = this.getActiveDeck();
-    try {
-      activeDeck.audio.pause();
-      activeDeck.audio.currentTime = 0;
-    } catch {
-      // Ignore
-    }
-    this.currentTime = 0;
-    this.setPlaybackState('idle');
-  }
-
-  /**
-   * Seeks to a specific timestamp in seconds.
-   */
-  public seek(seconds: number): void {
-    if (this.isDisposed) return;
-    const activeDeck = this.getActiveDeck();
-    const clampedSecs = clamp(seconds, 0, this.duration > 0 ? this.duration : seconds);
-
-    try {
-      activeDeck.audio.currentTime = clampedSecs;
-      this.currentTime = clampedSecs;
-      this.emit('timeUpdate', this.currentTime, this.duration);
-      this.notifySnapshot();
-    } catch {
-      // Ignore seek boundary errors
-    }
-  }
-
-  // ============================================================================
-  // Volume & Normalization
-  // ============================================================================
-
-  /**
-   * Sets the user master volume (0.0 to 1.0).
-   */
-  public setVolume(volume: number): void {
-    const clamped = clamp(volume, 0, 1);
-    this.userVolume = clamped;
-
-    if (clamped > 0) {
-      this.previousNonZeroVolume = clamped;
-      if (this.isMutedState) {
-        this.isMutedState = false;
-      }
-    } else {
-      this.isMutedState = true;
-    }
-
-    this.syncAllDeckVolumes();
-    this.emit('volumeChange', this.userVolume, this.getEffectiveVolume(), this.isMutedState);
-    this.notifySnapshot();
-  }
-
-  /**
-   * Mute all audio output.
-   */
-  public mute(): void {
-    if (this.isMutedState) return;
-    if (this.userVolume > 0) {
-      this.previousNonZeroVolume = this.userVolume;
-    }
-    this.isMutedState = true;
-    this.syncAllDeckVolumes();
-    this.emit('volumeChange', this.userVolume, this.getEffectiveVolume(), this.isMutedState);
-    this.notifySnapshot();
-  }
-
-  /**
-   * Unmute audio output.
-   */
-  public unmute(): void {
-    if (!this.isMutedState) return;
-    this.isMutedState = false;
-    if (this.userVolume === 0) {
-      this.userVolume = this.previousNonZeroVolume || 0.8;
-    }
-    this.syncAllDeckVolumes();
-    this.emit('volumeChange', this.userVolume, this.getEffectiveVolume(), this.isMutedState);
-    this.notifySnapshot();
-  }
-
-  /**
-   * Toggle mute state. Returns current muted state.
-   */
-  public toggleMute(): boolean {
-    if (this.isMutedState) {
-      this.unmute();
-    } else {
-      this.mute();
-    }
-    return this.isMutedState;
-  }
-
-  public getVolume(): number {
-    return this.userVolume;
-  }
-
-  public getEffectiveVolume(): number {
-    if (this.isMutedState) return 0;
-    return clamp(this.userVolume * this.normalizationGain, 0, 1);
-  }
-
-  public isMuted(): boolean {
-    return this.isMutedState;
-  }
-
-  private calculateDeckVolume(deck: DeckState): number {
-    if (this.isMutedState) return 0;
-    const norm =
-      deck.track && typeof deck.track.normalizationGain === 'number'
-        ? clamp(deck.track.normalizationGain, 0.5, 1.5)
-        : this.normalizationGain;
-
-    const raw = this.userVolume * norm * deck.fadeGain;
-    return clamp(raw, 0, 1);
-  }
-
-  private syncDeckVolume(deck: DeckState) {
-    try {
-      deck.audio.volume = this.calculateDeckVolume(deck);
-      deck.audio.muted = this.isMutedState;
-    } catch {
-      // Ignore volume constraint violations
-    }
-  }
-
-  private syncAllDeckVolumes() {
-    this.syncDeckVolume(this.deckA);
-    this.syncDeckVolume(this.deckB);
-  }
-
-  // ============================================================================
-  // True Dual-Deck Crossfade Architecture Foundation
-  // ============================================================================
-
-  /**
-   * Crossfades smoothly from the current active deck to the standby deck
-   * playing `nextTrack`.
-   * 
-   * @param nextTrack The incoming track to crossfade to
-   * @param durationMs Duration of crossfade transition in milliseconds (e.g. 1500ms)
-   */
-  public async crossfadeTo(nextTrack: AudioTrack, durationMs: number = 1500): Promise<void> {
-    if (this.isDisposed) return;
-
-    this.cancelCrossfade();
-    const operationId = ++this.currentOperationId;
-
-    const outgoingDeck = this.getActiveDeck();
-    const incomingDeck = this.getStandbyDeck();
-
-    incomingDeck.track = nextTrack;
-    incomingDeck.fadeGain = 0.0;
-    this.syncDeckVolume(incomingDeck);
-
-    if (!nextTrack.audioSrc) {
-      await this.load(nextTrack, true);
-      return;
-    }
-
-    try {
-      incomingDeck.audio.src = nextTrack.audioSrc;
-      incomingDeck.audio.currentTime = 0;
-      incomingDeck.audio.load();
-
-      await incomingDeck.audio.play();
-
-      if (this.currentOperationId !== operationId) {
-        incomingDeck.audio.pause();
-        return;
-      }
-
-      // Switch activeSlot so UI immediately reflects incoming track
-      this.activeSlot = incomingDeck.slot;
-      this.currentTrack = nextTrack;
-      this.normalizationGain = nextTrack.normalizationGain ?? 1.0;
-      this.setPlaybackState('playing');
-
-      const startTime = performance.now();
-      const outgoingStartGain = outgoingDeck.fadeGain;
-
-      await new Promise<void>((resolve) => {
-        const step = (now: number) => {
-          if (this.currentOperationId !== operationId) {
-            resolve();
-            return;
-          }
-
-          const elapsed = now - startTime;
-          const progress = clamp(elapsed / durationMs, 0, 1);
-          const eased = easeSineInOut(progress);
-
-          incomingDeck.fadeGain = eased;
-          outgoingDeck.fadeGain = outgoingStartGain * (1.0 - eased);
-
-          this.syncDeckVolume(incomingDeck);
-          this.syncDeckVolume(outgoingDeck);
-
-          if (progress < 1) {
-            this.crossfadeRafId = requestAnimationFrame(step);
-          } else {
-            // Transition complete
-            incomingDeck.fadeGain = 1.0;
-            outgoingDeck.fadeGain = 0.0;
-            this.syncDeckVolume(incomingDeck);
-            this.syncDeckVolume(outgoingDeck);
-
-            outgoingDeck.audio.pause();
-            outgoingDeck.audio.removeAttribute('src');
-            outgoingDeck.audio.load();
-
-            this.crossfadeRafId = null;
-            this.notifySnapshot();
-            resolve();
-          }
-        };
-
-        this.crossfadeRafId = requestAnimationFrame(step);
-      });
-    } catch (err: unknown) {
-      if (this.currentOperationId !== operationId) return;
-      const errObj = err instanceof Error ? err : new Error(String(err));
-      this.errorMessage = errObj.message;
-      this.setPlaybackState('error');
-      this.emit('error', errObj.message, errObj);
-    }
-  }
-
-  private cancelCrossfade() {
-    if (this.crossfadeRafId !== null) {
-      cancelAnimationFrame(this.crossfadeRafId);
-      this.crossfadeRafId = null;
-    }
-  }
-
-  // ============================================================================
-  // Telemetry & State Reporting
-  // ============================================================================
-
-  private updateBufferedProgress(deck: DeckState) {
-    const audio = deck.audio;
-    const dur = this.duration > 0 ? this.duration : audio.duration || 0;
-    const { fraction, seconds } = calculateBufferedRanges(audio.buffered, dur, audio.currentTime);
-
-    const changed =
-      Math.abs(this.bufferedFraction - fraction) > 0.01 ||
-      Math.abs(this.bufferedSeconds - seconds) > 0.5;
-
-    this.bufferedFraction = fraction;
-    this.bufferedSeconds = seconds;
-
-    if (changed) {
-      this.emit('bufferedChange', fraction, seconds);
-    }
-  }
-
-  private setPlaybackState(state: AudioPlaybackState) {
-    if (this.playbackState !== state) {
-      this.playbackState = state;
-      const snapshot = this.getSnapshot();
-      this.emit('stateChange', state, snapshot);
-      this.notifySnapshot();
-    }
+  public setMuted(muted: boolean): void {
+    if (this.isDestroyed || !this.audio) return;
+    this.audio.muted = muted;
   }
 
   public getCurrentTime(): number {
-    return this.currentTime;
+    return this.audio?.currentTime || 0;
   }
 
   public getDuration(): number {
-    return this.duration;
+    const dur = this.audio?.duration;
+    return isFinite(dur || 0) ? (dur || 0) : 0;
   }
 
-  public getBufferedFraction(): number {
-    return this.bufferedFraction;
+  public isPlaying(): boolean {
+    return Boolean(this.audio && !this.audio.paused && !this.audio.ended && this.audio.readyState > 2);
   }
 
-  public getBufferedSeconds(): number {
-    return this.bufferedSeconds;
-  }
-
-  public getPlaybackState(): AudioPlaybackState {
-    return this.playbackState;
-  }
-
-  public getCurrentTrack(): AudioTrack | null {
-    return this.currentTrack;
-  }
-
-  public getSnapshot(): AudioEngineSnapshot {
-    return {
-      currentTrack: this.currentTrack,
-      playbackState: this.playbackState,
-      currentTime: this.currentTime,
-      duration: this.duration,
-      bufferedFraction: this.bufferedFraction,
-      bufferedSeconds: this.bufferedSeconds,
-      volume: this.userVolume,
-      effectiveVolume: this.getEffectiveVolume(),
-      isMuted: this.isMutedState,
-      isLoading: this.playbackState === 'loading',
-      isPlaying: this.playbackState === 'playing',
-      isBuffering: this.playbackState === 'buffering',
-      error: this.errorMessage,
-      activeDeck: this.activeSlot,
-    };
-  }
-
-  // ============================================================================
-  // Subscription & Event Dispatcher
-  // ============================================================================
-
-  public subscribe(listener: AudioEngineListener): () => void {
-    this.snapshotListeners.add(listener);
-    // Immediately deliver current snapshot to the new subscriber
-    listener(this.getSnapshot());
-
-    return () => {
-      this.snapshotListeners.delete(listener);
-    };
-  }
-
-  public on<K extends AudioEngineEventType>(
-    event: K,
-    handler: AudioEngineEvents[K]
-  ): () => void {
-    if (!this.eventHandlers[event]) {
-      this.eventHandlers[event] = new Set();
+  // Native event handlers bound with monotonic generation checking
+  private handlePlay = (): void => {
+    if (this.activeRequestId > 0) {
+      this.callbacks.onPlayStateChange?.(true, this.activeRequestId);
     }
-    const set = this.eventHandlers[event]!;
-    const untypedHandler = handler as unknown as (...args: unknown[]) => void;
-    set.add(untypedHandler);
+  };
 
-    return () => {
-      set.delete(untypedHandler);
-    };
-  }
-
-  private emit<K extends AudioEngineEventType>(
-    event: K,
-    ...args: Parameters<AudioEngineEvents[K]>
-  ) {
-    const handlers = this.eventHandlers[event];
-    if (handlers) {
-      handlers.forEach((handler) => {
-        try {
-          (handler as (...a: unknown[]) => void)(...args);
-        } catch (e) {
-          console.error(`Error in AudioEngine event listener (${event}):`, e);
-        }
-      });
+  private handlePlaying = (): void => {
+    if (this.activeRequestId > 0) {
+      this.callbacks.onBufferingChange?.(false, this.activeRequestId);
+      this.callbacks.onPlayStateChange?.(true, this.activeRequestId);
     }
-  }
+  };
 
-  private notifySnapshot() {
-    const snapshot = this.getSnapshot();
-    this.snapshotListeners.forEach((listener) => {
-      try {
-        listener(snapshot);
-      } catch (e) {
-        console.error('Error in AudioEngine snapshot listener:', e);
+  private handlePause = (): void => {
+    if (this.activeRequestId > 0) {
+      this.callbacks.onPlayStateChange?.(false, this.activeRequestId);
+      this.callbacks.onBufferingChange?.(false, this.activeRequestId);
+    }
+  };
+
+  private handleWaiting = (): void => {
+    if (this.activeRequestId > 0 && this.intendedPlaying) {
+      this.callbacks.onBufferingChange?.(true, this.activeRequestId);
+    }
+  };
+
+  private handleCanPlay = (): void => {
+    if (this.activeRequestId > 0) {
+      this.callbacks.onBufferingChange?.(false, this.activeRequestId);
+      if (this.intendedPlaying && this.audio?.paused) {
+        this.play(this.activeRequestId);
       }
-    });
+    }
+  };
+
+  private handleTimeUpdate = (): void => {
+    this.dispatchProgress();
+  };
+
+  private handleDurationChange = (): void => {
+    this.dispatchProgress();
+  };
+
+  private handleProgress = (): void => {
+    this.dispatchProgress();
+  };
+
+  private dispatchProgress(): void {
+    if (!this.audio || this.activeRequestId <= 0) return;
+
+    const current = this.audio.currentTime || 0;
+    const dur = this.audio.duration;
+    const duration = isFinite(dur) ? dur : 0;
+
+    let loadedFraction = 0;
+    if (this.audio.buffered && this.audio.buffered.length > 0 && duration > 0) {
+      try {
+        const bufferedEnd = this.audio.buffered.end(this.audio.buffered.length - 1);
+        loadedFraction = Math.min(1, Math.max(0, bufferedEnd / duration));
+      } catch {}
+    }
+
+    this.callbacks.onProgress?.(current, duration, loadedFraction, this.activeRequestId);
   }
 
-  // ============================================================================
-  // Teardown & Resource Cleanup
-  // ============================================================================
+  private handleEnded = (): void => {
+    if (this.activeRequestId > 0) {
+      this.callbacks.onPlayStateChange?.(false, this.activeRequestId);
+      this.callbacks.onEnded?.(this.activeRequestId);
+    }
+  };
 
-  /**
-   * Destroys the audio engine, detaches event listeners, cleans up HTMLAudioElements,
-   * cancels animation frames, and removes all subscribers.
-   */
+  private handleError = (): void => {
+    if (this.activeRequestId <= 0 || !this.currentUrl) return;
+
+    const mediaError = this.audio?.error;
+    let message = 'Audio playback error';
+    let code = 2;
+
+    if (mediaError) {
+      code = mediaError.code;
+      switch (mediaError.code) {
+        case mediaError.MEDIA_ERR_ABORTED:
+          return; // Aborted by caller, ignore
+        case mediaError.MEDIA_ERR_NETWORK:
+          message = 'Network error while loading recording';
+          break;
+        case mediaError.MEDIA_ERR_DECODE:
+          message = 'Audio decode error';
+          break;
+        case mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          message = 'Audio format not supported or file unavailable';
+          break;
+      }
+    }
+
+    this.callbacks.onError?.(
+      {
+        code,
+        message: 'Authorized Audio Error',
+        submessage: message,
+      },
+      this.activeRequestId
+    );
+  };
+
   public destroy(): void {
-    this.isDisposed = true;
-    this.currentOperationId++;
-    this.cancelCrossfade();
-
-    this.detachDeckListeners(this.deckA);
-    this.detachDeckListeners(this.deckB);
-
-    safeCleanupAudioElement(this.deckA.audio);
-    safeCleanupAudioElement(this.deckB.audio);
-
-    this.snapshotListeners.clear();
-    this.eventHandlers = {};
+    this.isDestroyed = true;
+    this.disarm();
+    this.removeListeners();
+    this.audio = null;
+    this.callbacks = {};
   }
 }

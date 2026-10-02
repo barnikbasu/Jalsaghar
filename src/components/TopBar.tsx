@@ -31,34 +31,37 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   return (
-    <header className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 sm:px-8 py-4 sm:py-6 safe-pt safe-pl safe-pr pointer-events-auto select-none">
-      {/* TOP-LEFT: Real-world Kolkata Time (Read-only context) */}
-      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[#f7f3e9]/90 font-rozha text-xs sm:text-[13px] tracking-wider shadow-lg">
-        <Clock className="w-3.5 h-3.5 text-[#d8be87]" />
+    <header className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 sm:px-8 py-3.5 sm:py-5 safe-pt safe-pl safe-pr pointer-events-auto select-none">
+      {/* TOP-LEFT: Real-world Kolkata Time (Small quiet floating object) */}
+      <div
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[rgba(11,6,7,0.72)] border border-[rgba(212,175,55,0.12)] text-[#f7f3e9] font-rozha text-[11px] sm:text-xs tracking-wider shadow-sm opacity-60 hover:opacity-90 focus-within:opacity-90 transition-opacity duration-200 cursor-default"
+        title="Current Time in Kolkata (Asia/Kolkata)"
+      >
+        <Clock className="w-3 h-3 text-[#d8be87]" />
         <span>{clockString || '1:44 AM · IST'}</span>
       </div>
 
-      {/* TOP-CENTER: Live Room Presence */}
-      <div className="hidden sm:flex items-center gap-2 px-3.5 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[#d8be87] font-rozha text-[11px] tracking-[0.25em] uppercase shadow-lg">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+      {/* TOP-CENTER: Live Room Presence (Subtle room status, not a streaming badge) */}
+      <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[rgba(11,6,7,0.72)] border border-[rgba(212,175,55,0.12)] text-[#d8be87]/80 font-rozha text-[10px] tracking-[0.2em] uppercase shadow-sm opacity-60 hover:opacity-90 transition-opacity duration-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#d8be87]/90" />
         <span>LIVE</span>
       </div>
 
-      {/* TOP-RIGHT: Exactly TWO Compact Floating Pills */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* PILL 1: Media & Streaming [ YouTube Music | Spotify ] */}
-        <div className="flex items-center rounded-full bg-black/40 backdrop-blur-md border border-white/12 shadow-[0_4px_16px_rgba(0,0,0,0.6)] p-1 text-white">
+      {/* TOP-RIGHT: Four Small Artifacts (Thin treatment, lower opacity at rest) */}
+      <div className="flex items-center gap-2 sm:gap-2.5">
+        {/* ARTIFACT 1 & 2: Media & Streaming [ YouTube Music | Spotify ] */}
+        <div className="flex items-center rounded-full bg-[rgba(11,6,7,0.72)] border border-[rgba(212,175,55,0.12)] p-0.5 shadow-sm opacity-60 hover:opacity-90 focus-within:opacity-90 transition-opacity duration-200 text-[#f7f3e9]">
           {/* YouTube Music Button */}
           <button
             onClick={() => handleOpenExternal('youtubeMusic', EXTERNAL_LINKS.youtubeMusic)}
             id="youtube-music-external-btn"
-            className="p-1.5 sm:p-2 rounded-full hover:bg-white/15 text-white/90 hover:text-white transition-all cursor-pointer group"
+            className="p-1.5 sm:p-2 rounded-full hover:bg-[rgba(212,175,55,0.10)] text-[#f7f3e9]/80 hover:text-[#f7f3e9] transition-colors cursor-pointer"
             aria-label="Open Jalsaghar playlist on YouTube Music"
             title="YouTube Music Playlist"
           >
-            {/* Custom Minimal White Vector Icon for YouTube Music */}
+            {/* Minimal Vector Icon for YouTube Music */}
             <svg
-              className="w-4 h-4 sm:w-4.5 sm:h-4.5 fill-current"
+              className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current"
               viewBox="0 0 24 24"
               aria-hidden="true"
             >
@@ -68,20 +71,20 @@ export const TopBar: React.FC<TopBarProps> = ({
             </svg>
           </button>
 
-          {/* Subtle Vertical Divider */}
-          <div className="w-[1px] h-3.5 bg-white/15 mx-0.5" />
+          {/* Thin Hairline Divider */}
+          <div className="w-[1px] h-3 bg-[rgba(212,175,55,0.15)] mx-0.5" />
 
           {/* Spotify Button */}
           <button
             onClick={() => handleOpenExternal('spotify', EXTERNAL_LINKS.spotify)}
             id="spotify-external-btn"
-            className="p-1.5 sm:p-2 rounded-full hover:bg-white/15 text-white/90 hover:text-white transition-all cursor-pointer group"
+            className="p-1.5 sm:p-2 rounded-full hover:bg-[rgba(212,175,55,0.10)] text-[#f7f3e9]/80 hover:text-[#f7f3e9] transition-colors cursor-pointer"
             aria-label="Open Jalsaghar playlist on Spotify"
             title="Spotify Playlist"
           >
-            {/* Custom Minimal White Vector Icon for Spotify */}
+            {/* Minimal Vector Icon for Spotify */}
             <svg
-              className="w-4 h-4 sm:w-4.5 sm:h-4.5 fill-current"
+              className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current"
               viewBox="0 0 24 24"
               aria-hidden="true"
             >
@@ -90,8 +93,8 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
         </div>
 
-        {/* PILL 2: Status & Utility [ Group | Chai ] */}
-        <div className="flex items-center rounded-full bg-black/40 backdrop-blur-md border border-white/12 shadow-[0_4px_16px_rgba(0,0,0,0.6)] p-1 text-white">
+        {/* ARTIFACT 3 & 4: Utility & Connection [ Group | Chai ] */}
+        <div className="flex items-center rounded-full bg-[rgba(11,6,7,0.72)] border border-[rgba(212,175,55,0.12)] p-0.5 shadow-sm opacity-60 hover:opacity-90 focus-within:opacity-90 transition-opacity duration-200 text-[#f7f3e9]">
           {/* Group / Community Icon Button */}
           <button
             onClick={() => {
@@ -99,20 +102,18 @@ export const TopBar: React.FC<TopBarProps> = ({
               onOpenCreators();
             }}
             id="group-creators-btn"
-            className="p-1.5 sm:p-2 rounded-full hover:bg-white/15 text-white/90 hover:text-white transition-all cursor-pointer group"
+            className="p-1.5 sm:p-2 rounded-full hover:bg-[rgba(212,175,55,0.10)] text-[#f7f3e9]/80 hover:text-[#f7f3e9] transition-colors cursor-pointer"
             aria-label="About the creator"
             title="Made with Bhalobasha"
           >
-            {/* Minimal Vector Icon: Two Stylized Human Silhouettes Side-by-Side Chest-Up */}
+            {/* Minimal Vector Icon: Human Silhouettes */}
             <svg
-              className="w-4 h-4 sm:w-4.5 sm:h-4.5 fill-current"
+              className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current"
               viewBox="0 0 24 24"
               aria-hidden="true"
             >
-              {/* Primary Figure */}
               <circle cx="8" cy="8" r="3.2" />
               <path d="M2.5 19c0-3.038 2.462-5.5 5.5-5.5s5.5 2.462 5.5 5.5v1h-11v-1z" />
-              {/* Offset Second Figure Behind */}
               <circle cx="16.5" cy="9.5" r="2.6" opacity="0.85" />
               <path
                 d="M13.5 15.2c.85-.45 1.84-.7 2.9-.7 2.65 0 4.8 1.95 4.8 4.5v1h-4.5v-.5c0-1.78-.96-3.3-2.4-4.1z"
@@ -121,8 +122,8 @@ export const TopBar: React.FC<TopBarProps> = ({
             </svg>
           </button>
 
-          {/* Subtle Vertical Divider */}
-          <div className="w-[1px] h-3.5 bg-white/15 mx-0.5" />
+          {/* Thin Hairline Divider */}
+          <div className="w-[1px] h-3 bg-[rgba(212,175,55,0.15)] mx-0.5" />
 
           {/* Coffee Cup / Chai Support Button */}
           <button
@@ -131,21 +132,18 @@ export const TopBar: React.FC<TopBarProps> = ({
               onOpenSupport();
             }}
             id="buy-chai-btn"
-            className="p-1.5 sm:p-2 rounded-full hover:bg-white/15 text-white/90 hover:text-white transition-all cursor-pointer group"
+            className="p-1.5 sm:p-2 rounded-full hover:bg-[rgba(212,175,55,0.10)] text-[#f7f3e9]/80 hover:text-[#f7f3e9] transition-colors cursor-pointer"
             aria-label="Buy us a chai to support Jalsaghar"
             title="Buy Us a Chai"
           >
-            {/* Minimal White Line-Art Coffee Mug with Steam Lines */}
+            {/* Minimal Line-Art Coffee Mug with Steam Lines */}
             <svg
-              className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-current fill-none stroke-[1.7] stroke-linecap-round stroke-linejoin-round"
+              className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-current fill-none stroke-[1.5] stroke-linecap-round stroke-linejoin-round"
               viewBox="0 0 24 24"
               aria-hidden="true"
             >
-              {/* Cup Body */}
               <path d="M4 8h12v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8z" />
-              {/* Cup Handle */}
               <path d="M16 10h2a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-2" />
-              {/* Steam Lines */}
               <path d="M7 3v2" />
               <path d="M10 2v3" />
               <path d="M13 3v2" />

@@ -109,7 +109,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   return (
     <div className={`w-full flex items-center gap-3 select-none ${className}`}>
       {/* Elapsed time */}
-      <span className="font-mono text-xs text-zinc-400 font-medium tracking-tight shrink-0 min-w-[34px] text-right">
+      <span className="font-mono text-[11px] text-[#d6be96]/60 tracking-tight shrink-0 min-w-[34px] text-right tabular-nums">
         {formatTime(displayTime)}
       </span>
 
@@ -128,26 +128,26 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
-        className="relative flex-1 py-2 cursor-pointer group flex items-center touch-none outline-none rounded-full"
+        className="relative flex-1 py-2 cursor-pointer group flex items-center touch-none outline-none"
       >
-        {/* Background track */}
-        <div className="w-full h-1 group-hover:h-1.5 transition-all duration-150 rounded-full bg-white/15 relative overflow-hidden">
+        {/* Hairline track (approx 1.5px) */}
+        <div className="w-full h-[1.5px] group-hover:h-[2px] transition-all duration-150 rounded-full bg-[rgba(255,255,255,0.12)] relative overflow-hidden">
           {/* Buffered Progress Bar */}
           <div
-            className="absolute top-0 left-0 bottom-0 bg-white/25 transition-all duration-300 rounded-full"
+            className="absolute top-0 left-0 bottom-0 bg-[rgba(255,255,255,0.18)] transition-all duration-300 rounded-full"
             style={{ width: `${bufferedPercent}%` }}
           />
 
-          {/* Played Progress Bar */}
+          {/* Played Progress Bar (Warm Ivory) */}
           <div
-            className="absolute top-0 left-0 bottom-0 bg-white transition-all duration-75 rounded-full"
+            className="absolute top-0 left-0 bottom-0 bg-[#f7f3e9] transition-all duration-75 rounded-full"
             style={{ width: `${playedPercent}%` }}
           />
         </div>
 
-        {/* Tactile Scrubber Thumb Handle */}
+        {/* Subtle Thumb (expands slightly on hover) */}
         <div
-          className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-white shadow-md pointer-events-none transition-transform duration-100 ${
+          className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[#f7f3e9] shadow-sm pointer-events-none transition-transform duration-150 ${
             isDragging ? 'scale-125' : 'scale-0 group-hover:scale-100'
           }`}
           style={{ left: `${playedPercent}%` }}
@@ -156,7 +156,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
         {/* Hover Time Tooltip */}
         {hoverPosition && !isDragging && (
           <div
-            className="absolute -top-7 -translate-x-1/2 px-2 py-0.5 rounded bg-black/90 border border-white/20 text-white text-[10px] font-mono pointer-events-none shadow-lg z-30"
+            className="absolute -top-6 -translate-x-1/2 px-1.5 py-0.5 rounded bg-[rgba(11,6,7,0.92)] border border-[rgba(212,175,55,0.2)] text-[#f7f3e9] text-[9.5px] font-mono pointer-events-none shadow-md z-30"
             style={{ left: `${hoverPosition.x}px` }}
           >
             {formatTime(hoverPosition.time)}
@@ -165,7 +165,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       </div>
 
       {/* Duration time */}
-      <span className="font-mono text-xs text-zinc-400 font-medium tracking-tight shrink-0 min-w-[34px] text-left">
+      <span className="font-mono text-[11px] text-[#d6be96]/60 tracking-tight shrink-0 min-w-[34px] text-left tabular-nums">
         {formatTime(duration)}
       </span>
     </div>

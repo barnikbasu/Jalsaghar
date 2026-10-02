@@ -6,8 +6,18 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from 'react';
-import { Track, PlaylistId, RepeatMode, PlaybackState, PlaybackStatus, PlaybackErrorInfo } from '../types';
+import {
+  Track,
+  PlaylistId,
+  RepeatMode,
+  PlaybackState,
+  PlaybackStatus,
+  PlaybackErrorInfo,
+  PlaybackTransport,
+} from '../types';
 import { YouTubePlayer, YouTubePlayerRef } from './YouTubePlayer';
+import { AudioEngine } from '../lib/audio/AudioEngine';
+import { MediaSessionController } from '../lib/audio/MediaSessionController';
 import { ProgressBar } from './player/ProgressBar';
 import { VolumeControl } from './player/VolumeControl';
 import { UpNextPanel } from './player/UpNextPanel';
@@ -77,6 +87,17 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
   ) => {
     // Direct imperative ref to YouTube IFrame API instance
     const youtubeRef = useRef<YouTubePlayerRef | null>(null);
+
+    // Headless Authorized Audio Transport instance (single stable instance)
+    const audioEngineRef = useRef<AudioEngine | null>(null);
+
+    // W3C Media Session API Controller instance
+    const mediaSessionRef = useRef<MediaSessionController | null>(null);
+
+    // Single active media transport tracking ('youtube' | 'authorized-audio')
+    const activeTransportRef = useRef<PlaybackTransport>(
+      currentTrack.audioUrl ? 'authorized-audio' : 'youtube'
+    );
 
     // Asynchronous lifecycle refs distinguishing requested track, user intent, and player state
     const currentTrackIndexRef = useRef<number>(0);
@@ -164,8 +185,35 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       setImgError(false);
     }, [currentTrack.id]);
 
+    // Initialize stable AudioEngine and MediaSessionController instances once on mount
+    useEffect(() => {
+      const engine = new AudioEngine();
+      engine.setVolume(userVolume);
+      engine.setMuted(isMuted);
+      audioEngineRef.current = engine;
+
+      const mediaSession = new MediaSessionController();
+      mediaSessionRef.current = mediaSession;
+
+      return () => {
+        engine.destroy();
+        mediaSession.destroy();
+      };
+    }, []);
+
     // DIRECT Play/Pause handler invoked within trusted user gesture
     const handlePlayPause = useCallback(() => {
+      if (activeTransportRef.current === 'authorized-audio') {
+        if (isPlaying) {
+          intendedPlayingRef.current = false;
+          audioEngineRef.current?.pause(playRequestIdRef.current);
+        } else {
+          intendedPlayingRef.current = true;
+          audioEngineRef.current?.play(playRequestIdRef.current);
+        }
+        return;
+      }
+
       // If the current track has an active embed restriction, do not issue repeated load/play commands to YouTube.
       // Instead, gracefully open the direct recording destination on YouTube in a new tab.
       if (
@@ -186,7 +234,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       }
     }, [isPlaying, playbackStatus, currentTrack.youtubeUrl]);
 
-    // Handle play state change notified directly by YouTube engine
+    // Handle play state change notified directly by YouTube engine or AudioEngine
     const handlePlayStateChange = useCallback(
       (playing: boolean, requestId?: number) => {
         // Monotonic generation check: discard callbacks from older requests (protects A -> B -> A)
@@ -236,11 +284,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
 
         if (!track) return;
 
-        const videoId = extractYouTubeVideoId(track.youtubeUrl);
-        if (!videoId) return;
-
         currentTrackIndexRef.current = index;
-        currentVideoIdRef.current = videoId;
         intendedPlayingRef.current = true;
 
         // Visual UI synchronization
@@ -248,13 +292,32 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         setErrorInfo(null);
         setPlaybackStatus('loading');
         onTrackSelect(track);
+        mediaSessionRef.current?.updateMetadata(track);
 
-        if (!playerReadyRef.current) {
-          pendingTrackIndexRef.current = index;
-          return;
+        const hasAuthorizedAudio = Boolean(track.audioUrl);
+        activeTransportRef.current = hasAuthorizedAudio ? 'authorized-audio' : 'youtube';
+
+        if (hasAuthorizedAudio) {
+          // MUTUAL EXCLUSION: Disarm / pause YouTube immediately
+          youtubeRef.current?.pauseVideo();
+          // Load and play via AudioEngine
+          audioEngineRef.current?.load(track.audioUrl!, requestId, true);
+        } else {
+          // MUTUAL EXCLUSION: Disarm / pause HTML5 audio immediately
+          audioEngineRef.current?.disarm();
+
+          const videoId = extractYouTubeVideoId(track.youtubeUrl);
+          if (!videoId) return;
+
+          currentVideoIdRef.current = videoId;
+
+          if (!playerReadyRef.current) {
+            pendingTrackIndexRef.current = index;
+            return;
+          }
+
+          youtubeRef.current?.loadAndPlay(videoId, requestId);
         }
-
-        youtubeRef.current?.loadAndPlay(videoId, requestId);
       },
       [allTracks, onTrackSelect]
     );
@@ -280,9 +343,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       (newVol: number) => {
         const clamped = Math.max(0, Math.min(100, Math.round(newVol)));
         setUserVolume(clamped);
+        audioEngineRef.current?.setVolume(clamped);
         youtubeRef.current?.setVolume(clamped);
         if (clamped > 0 && isMuted) {
           setIsMuted(false);
+          audioEngineRef.current?.setMuted(false);
           youtubeRef.current?.setMuted(false);
         }
         try {
@@ -297,6 +362,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     const handleToggleMute = useCallback(() => {
       setIsMuted((prev) => {
         const next = !prev;
+        audioEngineRef.current?.setMuted(next);
         youtubeRef.current?.setMuted(next);
         try {
           localStorage.setItem(STORAGE_KEY_MUTED, next.toString());
@@ -309,7 +375,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     // Previous button logic: if currentTime > 3.5s, restart current track; else go to previous track
     const handlePreviousAction = useCallback(() => {
       if (currentTime > 3.5) {
-        youtubeRef.current?.seekTo(0);
+        if (activeTransportRef.current === 'authorized-audio') {
+          audioEngineRef.current?.seekTo(0);
+        } else {
+          youtubeRef.current?.seekTo(0);
+        }
         setCurrentTime(0);
         trackEvent('track_restarted_from_prev', { title: currentTrack.title });
       } else {
@@ -368,7 +438,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
             handleNextAction();
           } else {
             intendedPlayingRef.current = false;
-            youtubeRef.current?.pause();
+            if (activeTransportRef.current === 'authorized-audio') {
+              audioEngineRef.current?.pause();
+            } else {
+              youtubeRef.current?.pause();
+            }
           }
         }
       },
@@ -391,11 +465,19 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         playTrack,
         playVideo: () => {
           intendedPlayingRef.current = true;
-          youtubeRef.current?.play();
+          if (activeTransportRef.current === 'authorized-audio') {
+            audioEngineRef.current?.play(playRequestIdRef.current);
+          } else {
+            youtubeRef.current?.play();
+          }
         },
         pauseVideo: () => {
           intendedPlayingRef.current = false;
-          youtubeRef.current?.pause();
+          if (activeTransportRef.current === 'authorized-audio') {
+            audioEngineRef.current?.pause(playRequestIdRef.current);
+          } else {
+            youtubeRef.current?.pause();
+          }
         },
         handleNext: handleNextAction,
         handlePrevious: handlePreviousAction,
@@ -404,7 +486,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       [playTrack, handleNextAction, handlePreviousAction]
     );
 
-    // YouTube progress update
+    // Unified progress update (for both YouTube and HTML5 audio)
     const handleProgress = useCallback(
       (curr: number, total: number, loadedFraction: number, requestId?: number) => {
         if (requestId !== undefined && requestId !== playRequestIdRef.current) {
@@ -414,6 +496,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         if (total > 0 && duration !== total) {
           setDuration(total);
         }
+        mediaSessionRef.current?.updatePositionState(total, curr);
         setBufferedFraction(loadedFraction);
       },
       [duration]
@@ -435,7 +518,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
           return;
         }
 
-        console.warn(`[JALSAGHAR] YouTube Player error (${code}):`, msg);
+        console.warn(`[JALSAGHAR] Player error (${code}):`, msg);
 
         let title = 'PLAYBACK ERROR';
         let submessage = "This recording can't be played inside JALSAGHAR.";
@@ -475,7 +558,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       [currentTrack.youtubeUrl, onPlayChange]
     );
 
-    // YouTube autoplay blocked by browser policy
+    // Autoplay blocked by browser policy
     const handleAutoplayBlocked = useCallback(
       (requestId?: number) => {
         if (requestId !== undefined && requestId !== playRequestIdRef.current) {
@@ -489,7 +572,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       [onPlayChange]
     );
 
-    // YouTube buffering state change
+    // Buffering state change
     const handleBufferingChange = useCallback(
       (buffering: boolean, requestId?: number) => {
         if (requestId !== undefined && requestId !== playRequestIdRef.current) {
@@ -511,11 +594,79 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     );
 
     // Seek commit from ProgressBar
-    const handleSeekCommit = useCallback((targetTime: number) => {
-      youtubeRef.current?.seekTo(targetTime);
-      setCurrentTime(targetTime);
-      trackEvent('player_seeked', { targetTime });
-    }, []);
+    const handleSeekCommit = useCallback(
+      (targetTime: number) => {
+        if (activeTransportRef.current === 'authorized-audio') {
+          audioEngineRef.current?.seekTo(targetTime);
+        } else {
+          youtubeRef.current?.seekTo(targetTime);
+        }
+        setCurrentTime(targetTime);
+        mediaSessionRef.current?.updatePositionState(duration, targetTime);
+        trackEvent('player_seeked', { targetTime });
+      },
+      [duration]
+    );
+
+    // Synchronize callbacks for AudioEngine and MediaSessionController whenever handlers change
+    useEffect(() => {
+      audioEngineRef.current?.setCallbacks({
+        onProgress: (current, total, loadedFraction, reqId) => {
+          handleProgress(current, total, loadedFraction, reqId);
+        },
+        onPlayStateChange: (playing, reqId) => {
+          handlePlayStateChange(playing, reqId);
+        },
+        onBufferingChange: (buffering, reqId) => {
+          handleBufferingChange(buffering, reqId);
+        },
+        onEnded: (reqId) => {
+          handleTrackEnded(reqId);
+        },
+        onError: (err, reqId) => {
+          handleError(err.code, err.message, 'error', reqId);
+        },
+        onAutoplayBlocked: (reqId) => {
+          handleAutoplayBlocked(reqId);
+        },
+      });
+
+      mediaSessionRef.current?.setCallbacks({
+        onPlay: () => {
+          if (!isPlaying) handlePlayPause();
+        },
+        onPause: () => {
+          if (isPlaying) handlePlayPause();
+        },
+        onPrevious: handlePreviousAction,
+        onNext: handleNextAction,
+        onSeekTo: handleSeekCommit,
+        onSeekBackward: (offset) => handleSeekCommit(Math.max(0, currentTime - offset)),
+        onSeekForward: (offset) => handleSeekCommit(Math.min(duration, currentTime + offset)),
+        onStop: () => {
+          if (isPlaying) handlePlayPause();
+        },
+      });
+    }, [
+      handleProgress,
+      handlePlayStateChange,
+      handleBufferingChange,
+      handleTrackEnded,
+      handleError,
+      handleAutoplayBlocked,
+      handlePlayPause,
+      handlePreviousAction,
+      handleNextAction,
+      handleSeekCommit,
+      isPlaying,
+      currentTime,
+      duration,
+    ]);
+
+    // Synchronize MediaSession playbackState when isPlaying changes
+    useEffect(() => {
+      mediaSessionRef.current?.updatePlaybackState(isPlaying);
+    }, [isPlaying]);
 
     // Open Archival Index Handler
     const handleOpenIndex = useCallback(() => {
@@ -638,30 +789,27 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
           className="fixed z-30 pointer-events-auto transition-all duration-300 ease-out top-16 left-1/2 -translate-x-1/2 flex flex-col items-center landscape:max-md:top-auto landscape:max-md:bottom-3 landscape:max-md:right-4 landscape:max-md:left-auto landscape:max-md:translate-x-0 landscape:max-md:items-end portrait:md:top-20 portrait:md:left-1/2 portrait:md:-translate-x-1/2 portrait:md:items-center portrait:md:bottom-auto portrait:md:right-auto landscape:md:top-auto landscape:md:bottom-6 landscape:md:right-6 landscape:md:left-auto landscape:md:translate-x-0 landscape:md:items-end lg:top-auto lg:bottom-6 lg:right-6 lg:left-auto lg:translate-x-0 lg:items-end"
           aria-label="Archival Recording Video Window"
         >
-          {/* Subtle archival monitor badge on desktop only */}
+          {/* Archival label immediately above */}
           {errorInfo ? (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 mb-1.5 bg-[#140c0f]/95 backdrop-blur-md rounded-md border border-amber-900/40 text-[10px] font-sans tracking-wide text-amber-200 select-none shadow-md">
+            <div className="flex items-center gap-1.5 text-[0.65rem] tracking-[0.14em] text-[#d6be96]/70 select-none mb-1 font-serif uppercase">
               <span
                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  errorInfo.status === 'youtube-only' ? 'bg-amber-400' : 'bg-rose-400'
+                  errorInfo.status === 'youtube-only' ? 'bg-[#d8be87]' : 'bg-rose-400'
                 }`}
               />
-              <span className="font-serif tracking-widest text-[9px] uppercase">
-                {errorInfo.title}
-              </span>
+              <span>{errorInfo.title}</span>
               <a
                 href={currentTrack.youtubeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="ml-1 text-amber-300 hover:text-white underline font-medium"
+                className="ml-1 text-[#d6be96] hover:text-white underline font-medium"
               >
-                Listen on YouTube ↗
+                Listen ↗
               </a>
             </div>
           ) : (
-            <div className="hidden lg:flex items-center gap-1.5 px-2 py-0.5 mb-1 bg-black/80 backdrop-blur-md rounded-md border border-amber-900/30 text-[9px] font-serif tracking-widest text-amber-200/70 select-none shadow-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              <span>ARCHIVAL RECORDING FEED</span>
+            <div className="text-[0.65rem] tracking-[0.14em] text-[#d6be96]/50 font-serif uppercase select-none mb-1">
+              ARCHIVAL RECORDING · YOUTUBE
             </div>
           )}
 
@@ -692,7 +840,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                   <span className="text-[7.5px] font-serif tracking-widest uppercase text-amber-300/80">
                     JALSAGHAR
                   </span>
-                  <span className="text-[7.5px] font-mono tracking-wider px-1 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200">
+                  <span className="text-[7.5px] font-mono tracking-wider px-1 py-0.2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200">
                     {errorInfo.status === 'youtube-only'
                       ? 'YOUTUBE ONLY'
                       : errorInfo.status === 'config-error'
@@ -704,10 +852,10 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                 </div>
 
                 <div className="my-auto py-0.5">
-                  <h4 className="text-[9px] font-serif tracking-widest text-amber-200 font-medium uppercase leading-tight">
+                  <h4 className="text-[9.5px] font-serif tracking-wider text-amber-200 font-medium uppercase mb-0.5 truncate">
                     {errorInfo.title}
                   </h4>
-                  <p className="text-[8px] text-zinc-300 leading-tight max-w-[170px] mx-auto font-sans">
+                  <p className="text-[8.5px] text-zinc-300 leading-tight max-w-[170px] mx-auto font-sans truncate">
                     {errorInfo.submessage || errorInfo.message}
                   </p>
                 </div>
@@ -716,25 +864,25 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                   href={currentTrack.youtubeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 hover:border-amber-400/60 text-amber-100 hover:text-white text-[8.5px] font-medium tracking-wide transition-all shadow-sm active:scale-98"
+                  className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 hover:border-amber-400/60 text-amber-100 hover:text-white text-[9.5px] font-medium tracking-wide transition-all shadow-sm active:scale-98"
                 >
                   <span>Listen on YouTube</span>
-                  <span className="text-[8.5px]">↗</span>
+                  <span className="text-[9.5px]">↗</span>
                 </a>
               </div>
             )}
           </YouTubePlayer>
         </div>
 
-        {/* 4. MAIN MUSIC PLAYER BAR DOCK (DESKTOP) */}
+        {/* 4. MAIN MUSIC PLAYER BAR DOCK (DESKTOP: ARCHIVAL LISTENING CONSOLE) */}
         <div
           id="desktop-music-player"
-          className="hidden md:grid grid-cols-[1.1fr_1.8fr_1.1fr] items-center w-full max-w-5xl px-6 py-3.5 rounded-2xl bg-[#0c0d10]/95 backdrop-blur-2xl border border-white/[0.08] shadow-[0_20px_50px_rgba(0,0,0,0.85)] pointer-events-auto text-white transition-all gap-4"
+          className="hidden md:grid grid-cols-[1.15fr_1.7fr_1.15fr] items-center w-full max-w-5xl px-6 py-3 rounded-2xl bg-[rgba(11,6,7,0.85)] backdrop-blur-md border border-[rgba(212,175,55,0.12)] shadow-[0_20px_50px_rgba(0,0,0,0.92)] pointer-events-auto text-[#f7f3e9] transition-all gap-4"
         >
           {/* ================= ZONE 1: TRACK ARTWORK & METADATA ================= */}
           <div className="flex items-center gap-3.5 min-w-0">
             {/* Track Artwork / Thumbnail */}
-            <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shadow-md shrink-0">
+            <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-[#160d10] border border-[rgba(212,175,55,0.15)] shadow-md shrink-0">
               {trackArtworkUrl && !imgError ? (
                 <img
                   src={trackArtworkUrl}
@@ -743,24 +891,28 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-amber-200/60">
+                <div className="w-full h-full flex items-center justify-center bg-[#160d10] text-[#d6be96]/60">
                   <Music2 className="w-5 h-5" />
                 </div>
               )}
             </div>
 
-            {/* Title & Artist hierarchy */}
+            {/* Title & Artist hierarchy: Raag -> Title -> Artist */}
             <div className="min-w-0 flex-1 truncate">
-              <h3 className="text-sm font-semibold text-white tracking-tight truncate">
+              {currentTrack.raga && (
+                <p className="text-[10px] tracking-[0.25em] font-serif uppercase text-[#d6be96] opacity-50 truncate leading-none mb-1">
+                  RAAG · {currentTrack.raga}
+                </p>
+              )}
+              <h3 className="font-rozha text-sm sm:text-[15px] text-[#f7f3e9] tracking-wide truncate leading-tight">
                 {currentTrack.title}
               </h3>
-              <p className="text-xs text-zinc-400 truncate mt-0.5">
-                {currentTrack.raga ? `${currentTrack.raga} · ` : ''}
+              <p className="text-[11px] font-serif text-[#d6be96]/70 truncate mt-0.5">
                 {currentTrack.artist}
               </p>
               {errorInfo && (
-                <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
-                  <span className="text-amber-300 font-serif tracking-wider uppercase font-medium">
+                <div className="flex items-center gap-1.5 mt-0.5 text-[9.5px]">
+                  <span className="text-[#d8be87] font-serif tracking-wider uppercase font-medium">
                     {errorInfo.status === 'youtube-only'
                       ? 'Available on YouTube'
                       : errorInfo.status === 'config-error'
@@ -774,7 +926,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                     href={currentTrack.youtubeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-amber-200/90 hover:text-white underline underline-offset-2 flex items-center gap-0.5"
+                    className="text-[#d6be96]/90 hover:text-white underline underline-offset-2 flex items-center gap-0.5"
                   >
                     <span>Listen ↗</span>
                   </a>
@@ -786,7 +938,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
             <button
               onClick={toggleLike}
               id="player-like-btn"
-              className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors cursor-pointer outline-none shrink-0"
+              className="p-1.5 rounded-full text-[#d6be96]/60 hover:text-[#f7f3e9] transition-colors cursor-pointer outline-none shrink-0"
               title={isCurrentTrackLiked ? 'Unlike (L)' : 'Like (L)'}
               aria-label={isCurrentTrackLiked ? 'Unlike track' : 'Like track'}
             >
@@ -794,7 +946,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                 className={`w-4 h-4 transition-transform duration-200 active:scale-125 ${
                   isCurrentTrackLiked
                     ? 'text-rose-500 fill-rose-500 hover:text-rose-400 hover:fill-rose-400'
-                    : 'hover:text-white'
+                    : 'stroke-[1.5]'
                 }`}
               />
             </button>
@@ -803,7 +955,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
           {/* ================= ZONE 2: CONTROLS & TIMELINE ================= */}
           <div className="flex flex-col items-center gap-1.5 w-full max-w-md mx-auto">
             {/* Media Playback Controls Row */}
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-6">
               {/* Shuffle */}
               <button
                 onClick={() => {
@@ -812,30 +964,30 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                 }}
                 id="desktop-shuffle-btn"
                 className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                  isShuffle ? 'text-white' : 'text-zinc-400 hover:text-white'
+                  isShuffle ? 'text-[#e8cca0]' : 'text-[#d6be96]/50 hover:text-[#f7f3e9]'
                 }`}
                 title={isShuffle ? 'Shuffle: On' : 'Shuffle: Off'}
                 aria-label={isShuffle ? 'Shuffle On' : 'Shuffle Off'}
               >
-                <Shuffle className="w-4 h-4" />
+                <Shuffle className="w-3.5 h-3.5 stroke-[1.5]" />
               </button>
 
               {/* Previous */}
               <button
                 onClick={handlePreviousAction}
                 id="desktop-prev-btn"
-                className="p-1.5 rounded-full text-zinc-300 hover:text-white transition-colors cursor-pointer outline-none"
+                className="p-1.5 rounded-full text-[#d6be96]/75 hover:text-[#f7f3e9] transition-colors cursor-pointer outline-none"
                 aria-label="Previous track (P)"
                 title="Previous (P)"
               >
-                <SkipBack className="w-5 h-5 fill-current" />
+                <SkipBack className="w-4.5 h-4.5 stroke-[1.5]" />
               </button>
 
-              {/* Play / Pause button */}
+              {/* Play / Pause button (Thin-line, subtle brass outlined, no solid white circular button) */}
               <button
                 onClick={handlePlayPause}
                 id="desktop-play-btn"
-                className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer outline-none"
+                className="w-10 h-10 rounded-full border border-[rgba(212,175,55,0.35)] bg-[rgba(212,175,55,0.08)] hover:bg-[rgba(212,175,55,0.16)] text-[#f7f3e9] flex items-center justify-center shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer outline-none"
                 aria-label={
                   errorInfo?.status === 'youtube-only'
                     ? 'Available on YouTube (Open in new tab)'
@@ -856,11 +1008,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                 }
               >
                 {isBuffering ? (
-                  <Loader2 className="w-5 h-5 animate-spin text-black" />
+                  <Loader2 className="w-4.5 h-4.5 animate-spin text-[#d6be96]" />
                 ) : isPlaying ? (
-                  <Pause className="w-5 h-5 fill-black text-black" />
+                  <Pause className="w-4 h-4 stroke-[1.5]" />
                 ) : (
-                  <Play className="w-5 h-5 fill-black text-black ml-0.5" />
+                  <Play className="w-4 h-4 stroke-[1.5] ml-0.5 fill-current" />
                 )}
               </button>
 
@@ -868,11 +1020,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
               <button
                 onClick={handleNextAction}
                 id="desktop-next-btn"
-                className="p-1.5 rounded-full text-zinc-300 hover:text-white transition-colors cursor-pointer outline-none"
+                className="p-1.5 rounded-full text-[#d6be96]/75 hover:text-[#f7f3e9] transition-colors cursor-pointer outline-none"
                 aria-label="Next track (N)"
                 title="Next (N)"
               >
-                <SkipForward className="w-5 h-5 fill-current" />
+                <SkipForward className="w-4.5 h-4.5 stroke-[1.5]" />
               </button>
 
               {/* Repeat Modes (Off -> All -> One) */}
@@ -880,15 +1032,15 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                 onClick={cycleRepeatMode}
                 id="desktop-repeat-btn"
                 className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                  repeatMode !== 'off' ? 'text-white' : 'text-zinc-400 hover:text-white'
+                  repeatMode !== 'off' ? 'text-[#e8cca0]' : 'text-[#d6be96]/50 hover:text-[#f7f3e9]'
                 }`}
                 title={`Repeat: ${repeatMode.toUpperCase()}`}
                 aria-label={`Repeat: ${repeatMode}`}
               >
                 {repeatMode === 'one' ? (
-                  <Repeat1 className="w-4 h-4 text-white" />
+                  <Repeat1 className="w-3.5 h-3.5 stroke-[1.5] text-[#e8cca0]" />
                 ) : (
-                  <Repeat className="w-4 h-4" />
+                  <Repeat className="w-3.5 h-3.5 stroke-[1.5]" />
                 )}
               </button>
             </div>
@@ -903,7 +1055,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
           </div>
 
           {/* ================= ZONE 3: UTILITY & RAAG INDEX ================= */}
-          <div className="flex items-center gap-3 justify-end shrink-0">
+          <div className="flex items-center gap-2.5 justify-end shrink-0">
             {/* Volume Control Slider */}
             <VolumeControl
               volume={userVolume}
@@ -916,15 +1068,15 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
             <button
               onClick={() => setShowQueue(!showQueue)}
               id="desktop-queue-btn"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold tracking-wider uppercase transition-all cursor-pointer shadow-sm active:scale-95 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10.5px] font-rozha tracking-wider uppercase transition-all cursor-pointer shadow-sm active:scale-95 ${
                 showQueue
-                  ? 'bg-amber-400/20 border-amber-400/50 text-amber-200'
-                  : 'bg-white/5 hover:bg-white/10 border-white/15 hover:border-white/25 text-white/90 hover:text-white'
+                  ? 'bg-[rgba(212,175,55,0.18)] border-[rgba(212,175,55,0.4)] text-[#f7f3e9]'
+                  : 'bg-[rgba(11,6,7,0.72)] hover:bg-[rgba(212,175,55,0.10)] border-[rgba(212,175,55,0.12)] hover:border-[rgba(212,175,55,0.25)] text-[#d6be96]/80 hover:text-[#f7f3e9]'
               }`}
               title="Up Next / Mehfil Repertoire (Q)"
               aria-label="Up Next / Mehfil Repertoire"
             >
-              <ListMusic className="w-3.5 h-3.5" />
+              <ListMusic className="w-3 h-3 text-[#d6be96]" />
               <span>QUEUE</span>
             </button>
 
@@ -932,11 +1084,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
             <button
               onClick={handleOpenIndex}
               id="desktop-raag-index-btn"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/25 text-white/90 hover:text-white text-xs font-semibold tracking-wider uppercase transition-all cursor-pointer shadow-sm active:scale-95"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[rgba(11,6,7,0.72)] hover:bg-[rgba(212,175,55,0.10)] border border-[rgba(212,175,55,0.12)] hover:border-[rgba(212,175,55,0.25)] text-[#d6be96]/80 hover:text-[#f7f3e9] text-[10.5px] font-rozha tracking-wider uppercase transition-all cursor-pointer shadow-sm active:scale-95"
               title="Open Raag & Repertoire Index"
               aria-label="Open Raag & Repertoire Index"
             >
-              <BookOpen className="w-3.5 h-3.5 text-zinc-300" />
+              <BookOpen className="w-3 h-3 text-[#d6be96]" />
               <span>INDEX</span>
             </button>
           </div>
@@ -945,11 +1097,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         {/* 5. MOBILE PLAYER DOCK */}
         <div
           id="mobile-music-player"
-          className="flex md:hidden flex-col w-full max-w-sm bg-[#0c0d10]/95 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.9)] pointer-events-auto text-white"
+          className="flex md:hidden flex-col w-full max-w-sm bg-[rgba(11,6,7,0.88)] backdrop-blur-md border border-[rgba(212,175,55,0.12)] rounded-2xl p-3.5 sm:p-4 shadow-[0_20px_50px_rgba(0,0,0,0.92)] pointer-events-auto text-[#f7f3e9]"
         >
           {/* Top: Artwork, Titles, Heart & Index */}
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-xl overflow-hidden bg-zinc-900 border border-white/10 shrink-0 relative">
+          <div className="flex items-center gap-3 mb-2.5">
+            <div className="w-11 h-11 rounded-xl overflow-hidden bg-[#160d10] border border-[rgba(212,175,55,0.15)] shrink-0 relative">
               {trackArtworkUrl && !imgError ? (
                 <img
                   src={trackArtworkUrl}
@@ -958,23 +1110,27 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-amber-200/60">
-                  <Music2 className="w-5 h-5" />
+                <div className="w-full h-full flex items-center justify-center bg-[#160d10] text-[#d6be96]/60">
+                  <Music2 className="w-4 h-4" />
                 </div>
               )}
             </div>
 
             <div className="flex-1 min-w-0 pr-1">
-              <h3 className="text-sm font-semibold text-white truncate leading-tight">
+              {currentTrack.raga && (
+                <p className="text-[9.5px] tracking-[0.25em] font-serif uppercase text-[#d6be96] opacity-50 truncate leading-none mb-0.5">
+                  RAAG · {currentTrack.raga}
+                </p>
+              )}
+              <h3 className="font-rozha text-sm text-[#f7f3e9] truncate leading-tight">
                 {currentTrack.title}
               </h3>
-              <p className="text-xs text-zinc-400 truncate mt-0.5">
-                {currentTrack.raga ? `${currentTrack.raga} · ` : ''}
+              <p className="text-[11px] font-serif text-[#d6be96]/70 truncate mt-0.5">
                 {currentTrack.artist}
               </p>
               {errorInfo && (
-                <div className="flex items-center gap-1.5 mt-0.5 text-[10px]">
-                  <span className="text-amber-300 font-serif tracking-wider uppercase font-medium">
+                <div className="flex items-center gap-1.5 mt-0.5 text-[9.5px]">
+                  <span className="text-[#d8be87] font-serif tracking-wider uppercase font-medium">
                     {errorInfo.status === 'youtube-only'
                       ? 'Available on YouTube'
                       : errorInfo.status === 'config-error'
@@ -988,7 +1144,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
                     href={currentTrack.youtubeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-amber-200/90 hover:text-white underline underline-offset-2"
+                    className="text-[#d6be96]/90 hover:text-white underline underline-offset-2"
                   >
                     Listen ↗
                   </a>
@@ -999,26 +1155,26 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
             <div className="flex items-center gap-1">
               <button
                 onClick={toggleLike}
-                className="p-1.5 rounded-full text-zinc-400 hover:text-white transition-colors"
+                className="p-1 rounded-full text-[#d6be96]/60 hover:text-[#f7f3e9] transition-colors"
                 aria-label="Like"
               >
                 <Heart
-                  className={`w-4 h-4 ${
-                    isCurrentTrackLiked ? 'text-rose-500 fill-rose-500' : ''
+                  className={`w-3.5 h-3.5 ${
+                    isCurrentTrackLiked ? 'text-rose-500 fill-rose-500' : 'stroke-[1.5]'
                   }`}
                 />
               </button>
               <button
                 onClick={() => setShowQueue(!showQueue)}
-                className="p-1.5 rounded-md bg-white/5 border border-white/15 text-white"
+                className="p-1.5 rounded-full bg-[rgba(11,6,7,0.72)] border border-[rgba(212,175,55,0.12)] text-[#d6be96]"
                 aria-label="Queue"
                 title="Queue"
               >
-                <ListMusic className="w-3.5 h-3.5" />
+                <ListMusic className="w-3 h-3" />
               </button>
               <button
                 onClick={handleOpenIndex}
-                className="px-2 py-1 rounded-md bg-white/5 border border-white/15 text-[10px] font-medium uppercase tracking-wider text-white"
+                className="px-2 py-0.5 rounded-full bg-[rgba(11,6,7,0.72)] border border-[rgba(212,175,55,0.12)] text-[9.5px] font-rozha uppercase tracking-wider text-[#d6be96]"
                 aria-label="Index"
               >
                 INDEX
@@ -1027,7 +1183,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
           </div>
 
           {/* Mobile Seeker */}
-          <div className="mb-2">
+          <div className="mb-1.5">
             <ProgressBar
               currentTime={currentTime}
               duration={duration}
@@ -1040,25 +1196,25 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
           <div className="flex items-center justify-between px-2">
             <button
               onClick={() => setIsShuffle(!isShuffle)}
-              className={`p-2 rounded-full transition-colors ${
-                isShuffle ? 'text-white' : 'text-zinc-400'
+              className={`p-1.5 rounded-full transition-colors ${
+                isShuffle ? 'text-[#e8cca0]' : 'text-[#d6be96]/50'
               }`}
               aria-label="Shuffle"
             >
-              <Shuffle className="w-4 h-4" />
+              <Shuffle className="w-3.5 h-3.5 stroke-[1.5]" />
             </button>
 
             <button
               onClick={handlePreviousAction}
-              className="p-2 rounded-full text-zinc-300 hover:text-white"
+              className="p-1.5 rounded-full text-[#d6be96]/75 hover:text-[#f7f3e9]"
               aria-label="Previous"
             >
-              <SkipBack className="w-5 h-5 fill-current" />
+              <SkipBack className="w-4.5 h-4.5 stroke-[1.5]" />
             </button>
 
             <button
               onClick={handlePlayPause}
-              className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-md active:scale-95"
+              className="w-10 h-10 rounded-full border border-[rgba(212,175,55,0.35)] bg-[rgba(212,175,55,0.08)] text-[#f7f3e9] flex items-center justify-center shadow-sm active:scale-95"
               aria-label={
                 errorInfo?.status === 'youtube-only'
                   ? 'Available on YouTube'
@@ -1075,33 +1231,33 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
               }
             >
               {isBuffering ? (
-                <Loader2 className="w-4.5 h-4.5 animate-spin text-black" />
+                <Loader2 className="w-4 h-4 animate-spin text-[#d6be96]" />
               ) : isPlaying ? (
-                <Pause className="w-4.5 h-4.5 fill-black text-black" />
+                <Pause className="w-4 h-4 stroke-[1.5]" />
               ) : (
-                <Play className="w-4.5 h-4.5 fill-black text-black ml-0.5" />
+                <Play className="w-4 h-4 stroke-[1.5] ml-0.5 fill-current" />
               )}
             </button>
 
             <button
               onClick={handleNextAction}
-              className="p-2 rounded-full text-zinc-300 hover:text-white"
+              className="p-1.5 rounded-full text-[#d6be96]/75 hover:text-[#f7f3e9]"
               aria-label="Next"
             >
-              <SkipForward className="w-5 h-5 fill-current" />
+              <SkipForward className="w-4.5 h-4.5 stroke-[1.5]" />
             </button>
 
             <button
               onClick={cycleRepeatMode}
-              className={`p-2 rounded-full transition-colors ${
-                repeatMode !== 'off' ? 'text-white' : 'text-zinc-400'
+              className={`p-1.5 rounded-full transition-colors ${
+                repeatMode !== 'off' ? 'text-[#e8cca0]' : 'text-[#d6be96]/50'
               }`}
               aria-label="Repeat"
             >
               {repeatMode === 'one' ? (
-                <Repeat1 className="w-4 h-4 text-white" />
+                <Repeat1 className="w-3.5 h-3.5 stroke-[1.5] text-[#e8cca0]" />
               ) : (
-                <Repeat className="w-4 h-4" />
+                <Repeat className="w-3.5 h-3.5 stroke-[1.5]" />
               )}
             </button>
           </div>
