@@ -169,10 +169,6 @@ export function App() {
         onOpen={() => {
           setIsCurtainOpen(true);
         }}
-        onStartPlayback={() => {
-          setIsPlaying(true);
-          musicPlayerRef.current?.playVideo();
-        }}
       />
     </main>
   );

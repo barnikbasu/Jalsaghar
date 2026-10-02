@@ -11,7 +11,6 @@ interface CurtainIntroProps {
 export const CurtainIntro: React.FC<CurtainIntroProps> = ({
   isOpen,
   onOpen,
-  onStartPlayback,
 }) => {
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
   const [isRendered, setIsRendered] = useState<boolean>(!isOpen);
@@ -24,11 +23,6 @@ export const CurtainIntro: React.FC<CurtainIntroProps> = ({
 
   const handleEnter = () => {
     trackEvent('curtain_opened');
-    if (onStartPlayback) {
-      try {
-        onStartPlayback();
-      } catch {}
-    }
     if (prefersReducedMotion) {
       onOpen();
       setIsRendered(false);

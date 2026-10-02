@@ -201,39 +201,6 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       };
     }, []);
 
-    // DIRECT Play/Pause handler invoked within trusted user gesture
-    const handlePlayPause = useCallback(() => {
-      if (activeTransportRef.current === 'authorized-audio') {
-        if (isPlaying) {
-          intendedPlayingRef.current = false;
-          audioEngineRef.current?.pause(playRequestIdRef.current);
-        } else {
-          intendedPlayingRef.current = true;
-          audioEngineRef.current?.play(playRequestIdRef.current);
-        }
-        return;
-      }
-
-      // If the current track has an active embed restriction, do not issue repeated load/play commands to YouTube.
-      // Instead, gracefully open the direct recording destination on YouTube in a new tab.
-      if (
-        playbackStatus === 'youtube-only' ||
-        playbackStatus === 'config-error' ||
-        playbackStatus === 'unavailable'
-      ) {
-        window.open(currentTrack.youtubeUrl, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
-      if (isPlaying) {
-        intendedPlayingRef.current = false;
-        youtubeRef.current?.pause();
-      } else {
-        intendedPlayingRef.current = true;
-        youtubeRef.current?.play();
-      }
-    }, [isPlaying, playbackStatus, currentTrack.youtubeUrl]);
-
     // Handle play state change notified directly by YouTube engine or AudioEngine
     const handlePlayStateChange = useCallback(
       (playing: boolean, requestId?: number) => {
@@ -321,6 +288,45 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       },
       [allTracks, onTrackSelect]
     );
+
+    // DIRECT Play/Pause handler invoked within trusted user gesture
+    const handlePlayPause = useCallback(() => {
+      // If player is in initial idle state, start playback via canonical playTrack
+      if (playbackStatus === 'idle') {
+        playTrack(currentTrack);
+        return;
+      }
+
+      if (activeTransportRef.current === 'authorized-audio') {
+        if (isPlaying) {
+          intendedPlayingRef.current = false;
+          audioEngineRef.current?.pause(playRequestIdRef.current);
+        } else {
+          intendedPlayingRef.current = true;
+          audioEngineRef.current?.play(playRequestIdRef.current);
+        }
+        return;
+      }
+
+      // If the current track has an active embed restriction, do not issue repeated load/play commands to YouTube.
+      // Instead, gracefully open the direct recording destination on YouTube in a new tab.
+      if (
+        playbackStatus === 'youtube-only' ||
+        playbackStatus === 'config-error' ||
+        playbackStatus === 'unavailable'
+      ) {
+        window.open(currentTrack.youtubeUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      if (isPlaying) {
+        intendedPlayingRef.current = false;
+        youtubeRef.current?.pause();
+      } else {
+        intendedPlayingRef.current = true;
+        youtubeRef.current?.play();
+      }
+    }, [isPlaying, playbackStatus, currentTrack, playTrack]);
 
     // Handle when YouTube player instance fires onReady
     const handlePlayerReady = useCallback(() => {
@@ -465,6 +471,10 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         playTrack,
         playVideo: () => {
           intendedPlayingRef.current = true;
+          if (playbackStatus === 'idle') {
+            playTrack(currentTrack);
+            return;
+          }
           if (activeTransportRef.current === 'authorized-audio') {
             audioEngineRef.current?.play(playRequestIdRef.current);
           } else {
@@ -483,7 +493,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         handlePrevious: handlePreviousAction,
         getCurrentRequestId: () => playRequestIdRef.current,
       }),
-      [playTrack, handleNextAction, handlePreviousAction]
+      [playTrack, handleNextAction, handlePreviousAction, playbackStatus, currentTrack]
     );
 
     // Unified progress update (for both YouTube and HTML5 audio)
